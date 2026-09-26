@@ -24,9 +24,9 @@ if (flutterVersionName == null) {
 }
 
 android {
-    namespace "com.yuopni.yuopni_app"
+    namespace "com.yuopni.app"
     compileSdk 35
-    ndkVersion flutter.ndkVersion
+    ndkVersion "27.0.12077973"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -42,7 +42,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.yuopni.yuopni_app"
+        applicationId "com.yuopni.app"
         minSdk 23
         targetSdk 35
         versionCode flutterVersionCode.toInteger()
