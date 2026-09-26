@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "628684774390",
+    "project_id": "yuopni-1c5e9",
+    "storage_bucket": "yuopni-1c5e9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:628684774390:android:a16009ced05f970eea85d7",
+        "android_client_info": {
+          "package_name": "com.yuopni.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "628684774390-ed4kqflss0uo413ra560shc71fmj6jav.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.yuopni.app",
+            "certificate_hash": "027843f0c3a807acfc15df529279a54d70f5e319"
+          }
+        },
+        {
+          "client_id": "628684774390-ie7v92pseos2fgh4j2temlg7flrckia1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAzQKD_Yhp_m8mCtMWXFXilZyhAWl7KNrU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "628684774390-ie7v92pseos2fgh4j2temlg7flrckia1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
