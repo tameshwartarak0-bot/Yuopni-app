@@ -9,20 +9,16 @@ import 'screens/main_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-
   final prefs = await SharedPreferences.getInstance();
-  // Ab ye hamesha SharedPreferences se padhega
-  bool seenDemo = prefs.getBool('seenDemo') ?? false; 
+  bool seenDemo = prefs.getBool('seenDemo')?? false;
   User? firebaseUser = FirebaseAuth.instance.currentUser;
-
-  runApp(YuopniApp(seenDemo: seenDemo, isLoggedIn: firebaseUser != null));
+  runApp(YuopniApp(seenDemo: seenDemo, isLoggedIn: firebaseUser!= null));
 }
 
 class YuopniApp extends StatelessWidget {
   final bool seenDemo;
   final bool isLoggedIn;
   YuopniApp({required this.seenDemo, required this.isLoggedIn});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -32,14 +28,9 @@ class YuopniApp extends StatelessWidget {
       home: _getStartPage(),
     );
   }
-
   Widget _getStartPage() {
-    if (!seenDemo) {
-      return DemoPage(); // 1. Pehle Demo - Bina login ke chalega
-    }
-    if (!isLoggedIn) {
-      return LoginPage(); // 2. Fir Login
-    }
-    return MainScreen(); // 3. Fir Home
+    if (!seenDemo) return DemoPage();
+    if (!isLoggedIn) return MainScreen(); // Ab Login force nahi, direct Main
+    return MainScreen();
   }
 }
