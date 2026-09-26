@@ -11,8 +11,8 @@ void main() async {
   await Firebase.initializeApp();
 
   final prefs = await SharedPreferences.getInstance();
-  // Pehli baar seenDemo false hoga, to DemoPage khulega
-  bool seenDemo = false; // Testing ke liye force Demo khol rahe hain
+  // Ab ye hamesha SharedPreferences se padhega
+  bool seenDemo = prefs.getBool('seenDemo') ?? false; 
   User? firebaseUser = FirebaseAuth.instance.currentUser;
 
   runApp(YuopniApp(seenDemo: seenDemo, isLoggedIn: firebaseUser != null));
@@ -33,10 +33,9 @@ class YuopniApp extends StatelessWidget {
     );
   }
 
-  // Yahi logic Demo -> Login -> Home karta hai
   Widget _getStartPage() {
     if (!seenDemo) {
-      return DemoPage(); // 1. Pehle Demo
+      return DemoPage(); // 1. Pehle Demo - Bina login ke chalega
     }
     if (!isLoggedIn) {
       return LoginPage(); // 2. Fir Login
