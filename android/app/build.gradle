@@ -49,18 +49,9 @@ android {
         versionName flutterVersionName
     }
 
-    signingConfigs {
-        release {
-            keyAlias 'yuopni'
-            keyPassword 'yuopni123'
-            storeFile file('yuopni.jks')
-            storePassword 'yuopni123'
-        }
-    }
-
     buildTypes {
         release {
-            signingConfig signingConfigs.release
+            signingConfig signingConfigs.debug
         }
     }
 }
