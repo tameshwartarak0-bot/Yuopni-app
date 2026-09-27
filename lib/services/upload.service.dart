@@ -1,58 +1,33 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'dart:io';
 
 class UploadService {
+  static const String cloudName = "b7qkm3lk";
+  static const String uploadPreset = "yuopni_upload";
+
   static Future<void> uploadPost(File file, String caption) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    final ref = FirebaseStorage.instance.ref().child('posts/$uid/$id.jpg');
-    await ref.putFile(file);
-    final url = await ref.getDownloadURL();
+    // 1. Cloudinary pe photo upload
+    var url = Uri.parse("https://api.cloudinary.com/v1_1/$cloudName/image/upload");
+    var request = http.MultipartRequest("POST", url);
+    request.fields['upload_preset'] = uploadPreset;
+    request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
-    final data = {
-      'postId': id,
-      'uid': uid,
-      'username': FirebaseAuth.instance.currentUser!.displayName?? 'Yuopni User',
-      'userPhoto': FirebaseAuth.instance.currentUser!.photoURL?? '',
-      'imageUrl': url,
+    var response = await request.send();
+    var resBody = await response.stream.bytesToString();
+    var data = json.decode(resBody);
+    String imageUrl = data['secure_url'];
+
+    // 2. Firestore me save
+    var user = FirebaseAuth.instance.currentUser;
+    await FirebaseFirestore.instance.collection('posts').add({
+      'imageUrl': imageUrl,
       'caption': caption,
-      'likes': [],
+      'uid': user?.uid,
+      'email': user?.email,
       'createdAt': FieldValue.serverTimestamp(),
-      'type': 'post',
-      'isDemo': true, // Ye line se Demo page me bhi aayega
-    };
-
-    await FirebaseFirestore.instance.collection('posts').doc(id).set(data);
-    await FirebaseFirestore.instance.collection('demo_posts').doc(id).set(data); // Demo ke liye
-    await FirebaseFirestore.instance.collection('users').doc(uid).collection('my_posts').doc(id).set(data);
-  }
-
-  static Future<void> uploadReel(File file, String songUrl, String songName) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
-    final ref = FirebaseStorage.instance.ref().child('reels/$uid/$id.mp4');
-    await ref.putFile(file);
-    final url = await ref.getDownloadURL();
-
-    final data = {
-      'postId': id,
-      'uid': uid,
-      'username': FirebaseAuth.instance.currentUser!.displayName?? 'Yuopni User',
-      'userPhoto': FirebaseAuth.instance.currentUser!.photoURL?? '',
-      'videoUrl': url,
-      'songUrl': songUrl,
-      'songName': songName,
-      'likes': [],
-      'createdAt': FieldValue.serverTimestamp(),
-      'type': 'reel',
-      'isDemo': true,
-    };
-
-    await FirebaseFirestore.instance.collection('reels').doc(id).set(data);
-    await FirebaseFirestore.instance.collection('posts').doc(id).set(data);
-    await FirebaseFirestore.instance.collection('demo_posts').doc(id).set(data);
-    await FirebaseFirestore.instance.collection('users').doc(uid).collection('my_posts').doc(id).set(data);
+    });
   }
 }
