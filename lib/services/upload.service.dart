@@ -7,13 +7,10 @@ class UploadService {
   static Future<void> uploadPost(File file, String caption) async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final id = DateTime.now().millisecondsSinceEpoch.toString();
-
-    // 1. Storage me upload
     final ref = FirebaseStorage.instance.ref().child('posts/$uid/$id.jpg');
     await ref.putFile(file);
     final url = await ref.getDownloadURL();
 
-    // 2. Firestore me 3 jagah save karna - Yahi fix hai
     final data = {
       'postId': id,
       'uid': uid,
@@ -23,13 +20,12 @@ class UploadService {
       'caption': caption,
       'likes': [],
       'createdAt': FieldValue.serverTimestamp(),
-      'type': 'post', // post ya reel
+      'type': 'post',
+      'isDemo': true, // Ye line se Demo page me bhi aayega
     };
 
-    // Main posts collection - Home feed yahi se aayega
     await FirebaseFirestore.instance.collection('posts').doc(id).set(data);
-
-    // User ke profile ke liye
+    await FirebaseFirestore.instance.collection('demo_posts').doc(id).set(data); // Demo ke liye
     await FirebaseFirestore.instance.collection('users').doc(uid).collection('my_posts').doc(id).set(data);
   }
 
@@ -51,10 +47,12 @@ class UploadService {
       'likes': [],
       'createdAt': FieldValue.serverTimestamp(),
       'type': 'reel',
+      'isDemo': true,
     };
 
     await FirebaseFirestore.instance.collection('reels').doc(id).set(data);
-    await FirebaseFirestore.instance.collection('posts').doc(id).set(data); // Reels bhi home me dikhega
+    await FirebaseFirestore.instance.collection('posts').doc(id).set(data);
+    await FirebaseFirestore.instance.collection('demo_posts').doc(id).set(data);
     await FirebaseFirestore.instance.collection('users').doc(uid).collection('my_posts').doc(id).set(data);
   }
 }
