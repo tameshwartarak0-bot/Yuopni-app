@@ -1,9 +1,10 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
+import 'package:http/http.dart' as http;
 
 class UploadPage extends StatefulWidget {
   const UploadPage({super.key});
@@ -19,6 +20,10 @@ class _UploadPageState extends State<UploadPage> {
   bool _isVideo = false;
   bool _isUploading = false;
 
+  // Cloudinary Config - jo abhi banaya
+  static const String cloudName = "b7qkm3lk";
+  static const String uploadPreset = "yuopni_upload";
+
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final xfile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
@@ -29,6 +34,21 @@ class _UploadPageState extends State<UploadPage> {
     final picker = ImagePicker();
     final xfile = await picker.pickVideo(source: ImageSource.gallery);
     if (xfile != null) setState(() { _file = File(xfile.path); _isVideo = true; });
+  }
+
+  Future<String> _uploadToCloudinary(File file, bool isVideo) async {
+    String type = isVideo ? "video" : "image";
+    var url = Uri.parse("https://api.cloudinary.com/v1_1/$cloudName/$type/upload");
+    var request = http.MultipartRequest("POST", url);
+    request.fields['upload_preset'] = uploadPreset;
+    request.files.add(await http.MultipartFile.fromPath('file', file.path));
+
+    var response = await request.send();
+    var resBody = await response.stream.bytesToString();
+    var data = json.decode(resBody);
+    
+    if (data['secure_url'] == null) throw Exception("Cloudinary error: $resBody");
+    return data['secure_url'];
   }
 
   Future<void> _upload() async {
@@ -46,17 +66,11 @@ class _UploadPageState extends State<UploadPage> {
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final time = DateTime.now().millisecondsSinceEpoch;
-      final ext = _isVideo ? "mp4" : "jpg";
-      final fileName = "$time.$ext";
 
-      // 1. Upload to Storage - Sahi Path
-      final ref = FirebaseStorage.instance.ref().child("posts").child(uid).child(fileName);
-      await ref.putFile(_file!); // Pehle upload
+      // 1. Cloudinary pe upload - Yahi main fix hai
+      String downloadUrl = await _uploadToCloudinary(_file!, _isVideo);
 
-      // 2. Uske BAAD URL lo - Yehi fix hai
-      String downloadUrl = await ref.getDownloadURL();
-
-      // 3. Firestore me save
+      // 2. Firestore me save
       String collectionName = _isVideo ? "reels" : "posts";
 
       await FirebaseFirestore.instance.collection(collectionName).add({
@@ -64,8 +78,7 @@ class _UploadPageState extends State<UploadPage> {
         'title': _titleCtrl.text.trim(),
         'description': _descCtrl.text.trim(),
         'songUrl': _songCtrl.text.trim(),
-        'mediaUrl': downloadUrl, // Ab ye milega
-        'fileName': fileName,
+        'mediaUrl': downloadUrl,
         'isVideo': _isVideo,
         'username': FirebaseAuth.instance.currentUser!.displayName ?? "User",
         'userPhoto': FirebaseAuth.instance.currentUser!.photoURL ?? "",
@@ -74,7 +87,6 @@ class _UploadPageState extends State<UploadPage> {
         'timestamp': time,
       });
 
-      // Home ke posts me bhi save (taki home, demo, profile 3 me dikhe)
       await FirebaseFirestore.instance.collection('all_posts').add({
         'uid': uid,
         'title': _titleCtrl.text.trim(),
@@ -89,7 +101,7 @@ class _UploadPageState extends State<UploadPage> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload Success!")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload Success! Cloudinary pe ho gaya")));
         Navigator.pop(context);
       }
     } catch (e) {
