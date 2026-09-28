@@ -2,178 +2,135 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
-import 'package:just_audio/just_audio.dart';
 
 class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      // FIX 1: limit(15) lagaya - ab sirf 15 post ayenge, fast
-      stream: FirebaseFirestore.instance
-         .collection('posts')
-         .orderBy('createdAt', descending: true)
-         .limit(15)
-         .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(
-              child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+           .collection('posts')
+           .orderBy('createdAt', descending: true)
+           .limit(10) // 15 se 10 kar diya aur tez
+           .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator(color: Colors.white));
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.white)));
+          }
+
+          return ListView.builder(
+            cacheExtent: 500, // YE FAST KA JADU HAI
+            itemCount: snapshot.data!.docs.length,
+            itemBuilder: (_, i) {
+              var data = snapshot.data!.docs[i].data() as Map<String, dynamic>;
+              String mediaUrl = (data['mediaUrl']?? data['imageUrl']?? '').toString();
+              String thumbUrl = (data['thumbnail']?? mediaUrl).toString();
+              bool isVideo = data['isVideo'] == true;
+
+              return Container(
+                margin: EdgeInsets.only(bottom: 12),
+                color: Colors.grey[900],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                Icon(Icons.image_not_supported, size: 60, color: Colors.grey),
-                SizedBox(height: 10),
-                Text("Abhi koi Post nahi hai",
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                Text("Create se pehla post upload karo"),
-              ]));
-        }
-
-        return ListView.builder(
-          itemCount: snapshot.data!.docs.length,
-          itemBuilder: (_, i) {
-            var data = snapshot.data!.docs[i].data() as Map<String, dynamic>;
-
-            // FIX 2: Tumhare naye upload me field 'mediaUrl' aur 'isVideo' hai, purane me 'imageUrl' / 'videoUrl' tha - dono support
-            String mediaUrl = (data['mediaUrl']?? data['imageUrl']?? data['videoUrl']?? '').toString();
-            bool isReel = data['isVideo'] == true || data['type'] == 'reel' || (data['videoUrl']?? '').toString().isNotEmpty;
-
-            return Card(
-              margin: EdgeInsets.all(8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ListTile(
-                    leading: CircleAvatar(
-                      backgroundImage: (data['userPhoto']?? '').toString().isNotEmpty
-                         ? NetworkImage(data['userPhoto'])
-                          : null,
-                      child: (data['userPhoto']?? '').toString().isEmpty? Icon(Icons.person) : null,
-                    ),
-                    title: Text(data['username']?? 'Yuopni User',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(data['title']?? ''),
-                  ),
-
-                  // FIX 3: CachedNetworkImage - ab dobara download nahi hoga, super fast
-                  if (!isReel && mediaUrl.isNotEmpty)
-                    CachedNetworkImage(
-                      imageUrl: mediaUrl,
-                      width: double.infinity,
-                      height: 300,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(height: 300, child: Center(child: CircularProgressIndicator())),
-                      errorWidget: (_, __, ___) => Container(height: 200, color: Colors.black12, child: Icon(Icons.broken_image)),
+                    ListTile(
+                      leading: CircleAvatar(
+                        backgroundImage: (data['userPhoto']?? '').toString().isNotEmpty
+                           ? NetworkImage(data['userPhoto'])
+                            : null,
+                      ),
+                      title: Text(data['username']?? 'User', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                      subtitle: Text(data['title']?? '', style: TextStyle(color: Colors.white70, fontSize: 12)),
                     ),
 
-                  // FIX 4: Video ab auto-play nahi hoga list me, tap karne pe hi chalega - isse hang khatam
-                  if (isReel && mediaUrl.isNotEmpty)
-                    ReelPlayer(videoUrl: mediaUrl, songUrl: data['songUrl']?? ''),
+                    // FAST IMAGE - AB BILKUL BUFFING NAHI
+                    if (!isVideo && mediaUrl.isNotEmpty)
+                      CachedNetworkImage(
+                        imageUrl: thumbUrl,
+                        memCacheWidth: 600, // 4K ki jagah 600px hi load hoga - 10x tez
+                        maxWidthDiskCache: 600,
+                        fadeInDuration: Duration(milliseconds: 200),
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Container(height: 300, color: Colors.white10, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                        errorWidget: (_, __, ___) => Container(height: 200, color: Colors.black12, child: Icon(Icons.broken_image, color: Colors.white)),
+                      ),
 
-                  Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: Text(data['caption']?? data['description']?? data['desc']?? '',
-                        style: TextStyle(fontSize: 14)),
-                  ),
-                  if ((data['songUrl']?? '').toString().isNotEmpty)
+                    if (isVideo)
+                      VideoThumbCard(videoUrl: mediaUrl, thumbUrl: thumbUrl),
+
                     Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Row(children: [
-                          Icon(Icons.music_note, size: 16),
-                          SizedBox(width: 4),
-                          Expanded(
-                              child: Text(data['songName']?? 'Original Audio',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey)))
-                        ])),
-                  Divider(),
-                  Row(children: [
-                    IconButton(icon: Icon(Icons.favorite_border), onPressed: () {}),
-                    IconButton(icon: Icon(Icons.chat_bubble_outline), onPressed: () {}),
-                    IconButton(icon: Icon(Icons.send), onPressed: () {}),
-                  ]),
-                ],
-              ),
-            );
-          },
-        );
-      },
+                      padding: EdgeInsets.all(10),
+                      child: Text(data['description']?? '', style: TextStyle(color: Colors.white, fontSize: 13)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 }
 
-// Reel player ab light-weight - sirf tap pe play
-class ReelPlayer extends StatefulWidget {
+// REEL AB LIST ME LOAD HI NAHI HOGA - SIRF TAP PE
+class VideoThumbCard extends StatefulWidget {
   final String videoUrl;
-  final String songUrl;
-  ReelPlayer({required this.videoUrl, required this.songUrl});
+  final String thumbUrl;
+  VideoThumbCard({required this.videoUrl, required this.thumbUrl});
   @override
-  _ReelPlayerState createState() => _ReelPlayerState();
+  _VideoThumbCardState createState() => _VideoThumbCardState();
 }
 
-class _ReelPlayerState extends State<ReelPlayer> {
-  VideoPlayerController? _videoController;
-  AudioPlayer? _audioPlayer;
-  bool _isPlaying = false;
+class _VideoThumbCardState extends State<VideoThumbCard> {
+  VideoPlayerController? _ctrl;
+  bool _playing = false;
 
-  void _initAndPlay() async {
-    if (_isPlaying) {
-      _videoController?.pause();
-      _audioPlayer?.pause();
-      setState(() => _isPlaying = false);
+  void _play() async {
+    if (_playing) {
+      _ctrl?.pause();
+      setState(() => _playing = false);
       return;
     }
-    _videoController = VideoPlayerController.network(widget.videoUrl);
-    await _videoController!.initialize();
-    _videoController!.setLooping(true);
-    _videoController!.play();
-
-    if (widget.songUrl.isNotEmpty) {
-      _audioPlayer = AudioPlayer();
-      await _audioPlayer!.setUrl(widget.songUrl);
-      _audioPlayer!.setLoopMode(LoopMode.one);
-      _audioPlayer!.play();
-    }
-    setState(() => _isPlaying = true);
+    _ctrl = VideoPlayerController.network(widget.videoUrl);
+    await _ctrl!.initialize();
+    _ctrl!.setLooping(true);
+    _ctrl!.play();
+    setState(() => _playing = true);
   }
 
   @override
-  void dispose() {
-    _videoController?.dispose();
-    _audioPlayer?.dispose();
-    super.dispose();
-  }
+  void dispose() { _ctrl?.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
-    if (_videoController!= null && _videoController!.value.isInitialized && _isPlaying) {
-      return Stack(
-        alignment: Alignment.center,
-        children: [
-          AspectRatio(
-              aspectRatio: _videoController!.value.aspectRatio,
-              child: VideoPlayer(_videoController!)),
-          IconButton(
-            icon: Icon(Icons.pause_circle, size: 50, color: Colors.white70),
-            onPressed: _initAndPlay,
-          )
-        ],
+    if (_playing && _ctrl!= null && _ctrl!.value.isInitialized) {
+      return GestureDetector(
+        onTap: _play,
+        child: AspectRatio(aspectRatio: _ctrl!.value.aspectRatio, child: VideoPlayer(_ctrl!)),
       );
     }
     return GestureDetector(
-      onTap: _initAndPlay,
-      child: Container(
-        height: 300,
-        width: double.infinity,
-        color: Colors.black,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Icon(Icons.play_circle_fill, size: 60, color: Colors.white),
-            Positioned(bottom: 10, child: Text("Tap to play reel", style: TextStyle(color: Colors.white70))),
-          ],
-        ),
+      onTap: _play,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CachedNetworkImage(
+            imageUrl: widget.thumbUrl,
+            memCacheWidth: 600,
+            height: 400,
+            width: double.infinity,
+            fit: BoxFit.cover,
+            placeholder: (_, __) => Container(height: 400, color: Colors.black),
+          ),
+          Container(color: Colors.black38, height: 400),
+          Icon(Icons.play_circle_fill, size: 70, color: Colors.white70),
+        ],
       ),
     );
   }
