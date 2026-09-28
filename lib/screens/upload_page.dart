@@ -1,10 +1,10 @@
 import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class UploadPage extends StatefulWidget {
   const UploadPage({super.key});
@@ -24,9 +24,41 @@ class _UploadPageState extends State<UploadPage> {
   static const String cloudName = "b7qkm3lk";
   static const String uploadPreset = "yuopni_upload";
 
+  final FlutterLocalNotificationsPlugin _notif = FlutterLocalNotificationsPlugin();
+
+  @override
+  void initState() {
+    super.initState();
+    _initNotif();
+  }
+
+  Future<void> _initNotif() async {
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const init = InitializationSettings(android: android);
+    await _notif.initialize(init);
+  }
+
+  Future<void> _showProgressNotif(double p) async {
+    const androidDetails = AndroidNotificationDetails(
+      'upload_channel', 'Uploads',
+      channelDescription: 'Yuopni upload progress',
+      importance: Importance.low,
+      priority: Priority.low,
+      showProgress: true,
+      maxProgress: 100,
+      progress: 0,
+      ongoing: true,
+    );
+    const details = NotificationDetails(android: androidDetails);
+    await _notif.show(
+      0, 'Upload ho raha hai...', '${p.toStringAsFixed(0)}% complete',
+      details,
+    );
+  }
+
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final xfile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70); // 30 se 70 kar diya - quality sahi rahegi aur size kam
+    final xfile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (xfile != null) setState(() { _file = File(xfile.path); _isVideo = false; });
   }
 
@@ -36,11 +68,9 @@ class _UploadPageState extends State<UploadPage> {
     if (xfile != null) setState(() { _file = File(xfile.path); _isVideo = true; });
   }
 
-  // YAHI MAIN FIX HAI - % KE SATH UPLOAD
   Future<String> _uploadToCloudinary(File file, bool isVideo, Function(double) onProgress) async {
     String type = isVideo ? "video" : "image";
     Dio dio = Dio();
-    
     FormData formData = FormData.fromMap({
       'upload_preset': uploadPreset,
       'file': await MultipartFile.fromFile(file.path),
@@ -53,6 +83,7 @@ class _UploadPageState extends State<UploadPage> {
         if (total != 0) {
           double p = sent / total * 100;
           onProgress(p);
+          _showProgressNotif(p);
         }
       },
     );
@@ -75,39 +106,48 @@ class _UploadPageState extends State<UploadPage> {
 
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
-
       String downloadUrl = await _uploadToCloudinary(_file!, _isVideo, (p) {
         if (mounted) setState(() => _progress = p);
       });
 
       String collectionName = _isVideo ? "reels" : "posts";
+      String title = _titleCtrl.text.trim();
+      String desc = _descCtrl.text.trim();
 
       await FirebaseFirestore.instance.collection(collectionName).add({
         'uid': uid,
-        'title': _titleCtrl.text.trim(),
-        'description': _descCtrl.text.trim(),
+        'title': title,
+        'title_search': title.toLowerCase(), // SEARCH FIX
+        'title_lower': title.toLowerCase(),
+        'description': desc,
+        'desc_search': desc.toLowerCase(),
+        'searchKeys': [title.toLowerCase(), ...title.toLowerCase().split(' ')],
         'songUrl': _songCtrl.text.trim(),
         'mediaUrl': downloadUrl,
         'videoUrl': downloadUrl,
         'imageUrl': downloadUrl,
-        'thumbnail': downloadUrl, // profile me yehi thumbnail ke roop me tez khulega
+        'thumbnail': downloadUrl,
         'isVideo': _isVideo,
         'username': FirebaseAuth.instance.currentUser!.displayName ?? "User",
         'userPhoto': FirebaseAuth.instance.currentUser!.photoURL ?? "",
         'createdAt': FieldValue.serverTimestamp(),
-        'likes': [], // 0 nahi, [] rakho warna like button crash karega
+        'likes': [],
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
+
+      await _notif.cancel(0);
+      await _notif.show(0, 'Upload Success!', '$title upload ho gaya', NotificationDetails(android: AndroidNotificationDetails('upload_channel','Uploads', importance: Importance.high, priority: Priority.high)));
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload Success!")));
         Navigator.pop(context);
       }
     } catch (e) {
+      await _notif.cancel(0);
       print("Upload error $e");
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
-      if (mounted) setState(() { _isUploading = false; });
+      if (mounted) setState(() { _isUploading = false; _progress = 0; });
     }
   }
 
@@ -119,36 +159,30 @@ class _UploadPageState extends State<UploadPage> {
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(children: [
-          TextField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Title / Tag likho", border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)))),
+          TextField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Title / Tag likho", border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))))),
           const SizedBox(height: 12),
-          TextField(controller: _descCtrl, maxLines: 4, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Description likho", border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)))),
+          TextField(controller: _descCtrl, maxLines: 4, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Description likho", border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))))),
           const SizedBox(height: 12),
-          TextField(controller: _songCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Song URL paste karo (Reel ke liye)", suffixIcon: const Icon(Icons.play_arrow), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)))),
+          TextField(controller: _songCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Song URL (Reel ke liye)", suffixIcon: const Icon(Icons.play_arrow), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))))),
           const SizedBox(height: 12),
           Container(
-            height: 180,
-            width: double.infinity,
-            color: Colors.white10,
-            child: _file == null
-                ? const Icon(Icons.videocam, size: 60, color: Colors.green)
-                : _isVideo
-                    ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.video_file, size: 60, color: Colors.green), Text(_file!.path.split('/').last, style: TextStyle(color: Colors.white70, fontSize: 12))])
-                    : Image.file(_file!, fit: BoxFit.cover),
+            height: 180, width: double.infinity, color: Colors.white10,
+            child: _file == null ? const Icon(Icons.videocam, size: 60, color: Colors.green) : _isVideo ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.video_file, size: 60, color: Colors.green), Text(_file!.path.split('/').last, style: TextStyle(color: Colors.white70, fontSize: 12))]) : Image.file(_file!, fit: BoxFit.cover),
           ),
           const SizedBox(height: 12),
           Row(children: [
-            Expanded(child: OutlinedButton(onPressed: _isUploading? null : _pickImage, child: const Text("Photo Chuno"))),
+            Expanded(child: OutlinedButton(onPressed: _isUploading ? null : _pickImage, child: const Text("Photo Chuno"))),
             const SizedBox(width: 10),
-            Expanded(child: OutlinedButton(onPressed: _isUploading? null : _pickVideo, child: const Text("Video/Reel Chuno"))),
+            Expanded(child: OutlinedButton(onPressed: _isUploading ? null : _pickVideo, child: const Text("Video/Reel Chuno"))),
           ]),
           const SizedBox(height: 20),
           if (_isUploading)
             Column(children: [
-              LinearProgressIndicator(value: _progress/100, backgroundColor: Colors.white24, color: Colors.purple.shade200),
+              LinearProgressIndicator(value: _progress/100, backgroundColor: Colors.white24, color: Colors.purple.shade200, minHeight: 8),
               const SizedBox(height: 10),
-              Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai...", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai...", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 4),
-              const Text("App band mat karo, notification me bhi dekh sakte ho", style: TextStyle(color: Colors.white54, fontSize: 11)),
+              const Text("Notification bar me bhi % dikhega - App band mat karo", style: TextStyle(color: Colors.white54, fontSize: 11)),
               const SizedBox(height: 12),
             ]),
           SizedBox(
