@@ -19,20 +19,20 @@ class _UploadPageState extends State<UploadPage> {
   File? _file;
   bool _isVideo = false;
   bool _isUploading = false;
+  double _progress = 0;
 
-  // Cloudinary Config - jo abhi banaya
   static const String cloudName = "b7qkm3lk";
   static const String uploadPreset = "yuopni_upload";
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final xfile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    final xfile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 30);
     if (xfile != null) setState(() { _file = File(xfile.path); _isVideo = false; });
   }
 
   Future<void> _pickVideo() async {
     final picker = ImagePicker();
-    final xfile = await picker.pickVideo(source: ImageSource.gallery);
+    final xfile = await picker.pickVideo(source: ImageSource.gallery, maxDuration: const Duration(seconds: 30));
     if (xfile != null) setState(() { _file = File(xfile.path); _isVideo = true; });
   }
 
@@ -43,10 +43,10 @@ class _UploadPageState extends State<UploadPage> {
     request.fields['upload_preset'] = uploadPreset;
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
-    var response = await request.send();
-    var resBody = await response.stream.bytesToString();
+    var streamedResponse = await request.send();
+    var resBody = await streamedResponse.stream.bytesToString();
     var data = json.decode(resBody);
-    
+
     if (data['secure_url'] == null) throw Exception("Cloudinary error: $resBody");
     return data['secure_url'];
   }
@@ -61,16 +61,20 @@ class _UploadPageState extends State<UploadPage> {
       return;
     }
 
-    setState(() => _isUploading = true);
+    int sizeInMB = await _file!.length() ~/ (1024 * 1024);
+    if (_isVideo && sizeInMB > 15) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Video bada hai ${sizeInMB}MB, 15MB se kam chuno")));
+      return;
+    }
+
+    setState(() { _isUploading = true; _progress = 0; });
 
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final time = DateTime.now().millisecondsSinceEpoch;
 
-      // 1. Cloudinary pe upload - Yahi main fix hai
       String downloadUrl = await _uploadToCloudinary(_file!, _isVideo);
 
-      // 2. Firestore me save
       String collectionName = _isVideo ? "reels" : "posts";
 
       await FirebaseFirestore.instance.collection(collectionName).add({
@@ -79,6 +83,8 @@ class _UploadPageState extends State<UploadPage> {
         'description': _descCtrl.text.trim(),
         'songUrl': _songCtrl.text.trim(),
         'mediaUrl': downloadUrl,
+        'videoUrl': downloadUrl,
+        'imageUrl': downloadUrl,
         'isVideo': _isVideo,
         'username': FirebaseAuth.instance.currentUser!.displayName ?? "User",
         'userPhoto': FirebaseAuth.instance.currentUser!.photoURL ?? "",
@@ -87,30 +93,15 @@ class _UploadPageState extends State<UploadPage> {
         'timestamp': time,
       });
 
-      await FirebaseFirestore.instance.collection('all_posts').add({
-        'uid': uid,
-        'title': _titleCtrl.text.trim(),
-        'description': _descCtrl.text.trim(),
-        'songUrl': _songCtrl.text.trim(),
-        'mediaUrl': downloadUrl,
-        'isVideo': _isVideo,
-        'username': FirebaseAuth.instance.currentUser!.displayName ?? "User",
-        'userPhoto': FirebaseAuth.instance.currentUser!.photoURL ?? "",
-        'createdAt': FieldValue.serverTimestamp(),
-        'timestamp': time,
-      });
-
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload Success! Cloudinary pe ho gaya")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload Success!")));
         Navigator.pop(context);
       }
     } catch (e) {
       print("Upload error $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
-      if (mounted) setState(() => _isUploading = false);
+      if (mounted) setState(() { _isUploading = false; _progress = 0; });
     }
   }
 
@@ -145,6 +136,13 @@ class _UploadPageState extends State<UploadPage> {
             Expanded(child: OutlinedButton(onPressed: _pickVideo, child: const Text("Video/Reel Chuno"))),
           ]),
           const SizedBox(height: 20),
+          if (_isUploading)
+            Column(children: [
+              const LinearProgressIndicator(),
+              const SizedBox(height: 8),
+              const Text("Upload ho raha hai, thoda wait karo...", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 12),
+            ]),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
