@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../widgets/login_dialog.dart';
+import 'reel_page.dart'; // ye import zaruri hai
 
 class ProfilePage extends StatelessWidget {
   @override
@@ -27,9 +28,9 @@ class ProfilePage extends StatelessWidget {
         body: Column(
           children: [
             SizedBox(height: 40),
-            CircleAvatar(radius: 45, backgroundImage: user.photoURL!= null? NetworkImage(user.photoURL!) : null, child: user.photoURL == null? Icon(Icons.person, size: 45) : null),
+            CircleAvatar(radius: 45, backgroundColor: Colors.deepOrange, child: Text((user.displayName?? "T")[0].toUpperCase(), style: TextStyle(fontSize: 30, color: Colors.white)), backgroundImage: user.photoURL!= null? NetworkImage(user.photoURL!) : null),
             SizedBox(height: 10),
-            Text(user.displayName?? "Yuopni User", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(user.displayName?? "Tameshwar Tarak", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             Text(user.email?? "", style: TextStyle(color: Colors.grey)),
             SizedBox(height: 10),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -42,7 +43,7 @@ class ProfilePage extends StatelessWidget {
             Expanded(
               child: TabBarView(
                 children: [
-                  // POSTS TAB - FAST
+                  // POSTS TAB
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).orderBy('createdAt', descending: true).limit(30).snapshots(),
                     builder: (c, snap) {
@@ -59,7 +60,7 @@ class ProfilePage extends StatelessWidget {
                       );
                     },
                   ),
-                  // REELS TAB - FAST
+                  // REELS TAB - AB CLICK LAG GAYA
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('reels').where('uid', isEqualTo: user.uid).orderBy('createdAt', descending: true).limit(30).snapshots(),
                     builder: (c, snap) {
@@ -70,11 +71,24 @@ class ProfilePage extends StatelessWidget {
                         itemCount: snap.data!.docs.length,
                         itemBuilder: (_, i) {
                           var d = snap.data!.docs[i].data() as Map<String, dynamic>;
-                          String url = (d['mediaUrl']?? d['videoUrl']?? '').toString();
-                          return Stack(fit: StackFit.expand, children: [
-                            CachedNetworkImage(imageUrl: url, fit: BoxFit.cover, errorWidget: (_,__,___)=> Container(color: Colors.black)),
-                            Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
-                          ]);
+                          String url = (d['mediaUrl']?? d['videoUrl']?? d['thumbnail']?? '').toString();
+
+                          return GestureDetector(
+                            onTap: () {
+                              // Click karte hi video start + Like/Comment/Share
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i)));
+                            },
+                            child: Stack(fit: StackFit.expand, children: [
+                              CachedNetworkImage(
+                                imageUrl: url,
+                                fit: BoxFit.cover,
+                                errorWidget: (_,__,___)=> Container(color: Colors.black),
+                                placeholder: (_,__)=> Container(color: Colors.black26),
+                              ),
+                              Container(color: Colors.black26),
+                              Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
+                            ]),
+                          );
                         },
                       );
                     },
