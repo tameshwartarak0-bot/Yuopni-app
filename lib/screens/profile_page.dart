@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../widgets/login_dialog.dart';
-import 'reel_page.dart'; // ye import zaruri hai
+import 'reel_page.dart';
 
 class ProfilePage extends StatelessWidget {
   @override
@@ -25,6 +25,7 @@ class ProfilePage extends StatelessWidget {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: Colors.white,
         body: Column(
           children: [
             SizedBox(height: 40),
@@ -43,7 +44,6 @@ class ProfilePage extends StatelessWidget {
             Expanded(
               child: TabBarView(
                 children: [
-                  // POSTS TAB
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).orderBy('createdAt', descending: true).limit(30).snapshots(),
                     builder: (c, snap) {
@@ -60,31 +60,31 @@ class ProfilePage extends StatelessWidget {
                       );
                     },
                   ),
-                  // REELS TAB - AB CLICK LAG GAYA
+                  // REELS TAB - FIXED
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('reels').where('uid', isEqualTo: user.uid).orderBy('createdAt', descending: true).limit(30).snapshots(),
                     builder: (c, snap) {
                       if (!snap.hasData) return Center(child: CircularProgressIndicator());
                       if (snap.data!.docs.isEmpty) return Center(child: Text("Abhi koi Reel nahi"));
+                      var reels = snap.data!.docs; // list save kar li
                       return GridView.builder(
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
-                        itemCount: snap.data!.docs.length,
+                        itemCount: reels.length,
                         itemBuilder: (_, i) {
-                          var d = snap.data!.docs[i].data() as Map<String, dynamic>;
-                          String url = (d['mediaUrl']?? d['videoUrl']?? d['thumbnail']?? '').toString();
+                          var d = reels[i].data() as Map<String, dynamic>;
+                          String url = (d['thumbnail']?? d['mediaUrl']?? d['videoUrl']?? '').toString();
 
                           return GestureDetector(
                             onTap: () {
-                              // Click karte hi video start + Like/Comment/Share
-                              Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i)));
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(
+                                initialIndex: i,
+                                myReels: reels, // <-- YE SABSE IMPORTANT FIX HAI
+                              )));
                             },
                             child: Stack(fit: StackFit.expand, children: [
-                              CachedNetworkImage(
-                                imageUrl: url,
-                                fit: BoxFit.cover,
-                                errorWidget: (_,__,___)=> Container(color: Colors.black),
-                                placeholder: (_,__)=> Container(color: Colors.black26),
-                              ),
+                              url.startsWith('http')
+                               ? CachedNetworkImage(imageUrl: url, fit: BoxFit.cover, errorWidget: (_,__,___)=> Container(color: Colors.black), placeholder: (_,__)=> Container(color: Colors.black26))
+                                : Container(color: Colors.black),
                               Container(color: Colors.black26),
                               Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
                             ]),
