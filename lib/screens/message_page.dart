@@ -21,7 +21,6 @@ class _MessagePageState extends State<MessagePage> {
     });
   }
 
-  // Login check - har tap par
   Future<bool> _checkLogin() async {
     if (FirebaseAuth.instance.currentUser == null && !isLoggedIn) {
       await showDialog(context: context, builder: (_) => LoginDialog());
@@ -43,13 +42,14 @@ class _MessagePageState extends State<MessagePage> {
             prefixIcon: Icon(Icons.search),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
             contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            suffixIcon: _searchText.isNotEmpty ? IconButton(icon: Icon(Icons.clear), onPressed: ()=> _searchCtrl.clear()) : null,
+            suffixIcon: _searchText.isNotEmpty
+               ? IconButton(icon: Icon(Icons.clear), onPressed: () => _searchCtrl.clear())
+                : null,
           ),
         ),
       ),
       body: Column(
         children: [
-          // Agar login nahi hai to
           if (currentUid == null)
             Expanded(
               child: Center(
@@ -58,30 +58,35 @@ class _MessagePageState extends State<MessagePage> {
                   SizedBox(height: 10),
                   Text("Messages dekhne ke liye Login karo"),
                   SizedBox(height: 12),
-                  ElevatedButton(onPressed: ()=> showDialog(context: context, builder: (_)=> LoginDialog()), child: Text("Login Karo"))
+                  ElevatedButton(onPressed: () => showDialog(context: context, builder: (_) => LoginDialog()), child: Text("Login Karo"))
                 ]),
               ),
             )
           else
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                // Search hai to users search, nahi to followers show
+                // FIX 1: Proper query with orderBy + limit
                 stream: _searchText.isEmpty
-                  ? FirebaseFirestore.instance.collection('users').doc(currentUid).collection('followers').snapshots() // tere followers
-                  : FirebaseFirestore.instance.collection('users').where('username_search', isGreaterThanOrEqualTo: _searchText).where('username_search', isLessThan: _searchText + 'z').snapshots(),
+                   ? FirebaseFirestore.instance.collection('users').doc(currentUid).collection('followers').limit(20).snapshots()
+                    : FirebaseFirestore.instance
+                         .collection('users')
+                         .orderBy('username_search')
+                         .startAt([_searchText])
+                         .endAt([_searchText + '\uf8ff'])
+                         .limit(10)
+                         .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Center(child: CircularProgressIndicator());
                   }
 
-                  // Search result
                   List<QueryDocumentSnapshot> docs = [];
                   if (snapshot.hasData) docs = snapshot.data!.docs;
 
-                  // Agar search khali hai aur follower collection khali hai to - saare users dikhao (starting ke liye)
                   if (_searchText.isEmpty && docs.isEmpty) {
+                    // FIX 2: Fallback bhi limit(15) ke saath
                     return StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance.collection('users').limit(30).snapshots(),
+                      stream: FirebaseFirestore.instance.collection('users').limit(15).snapshots(),
                       builder: (c, snap2) {
                         if (!snap2.hasData) return Center(child: CircularProgressIndicator());
                         return _buildList(snap2.data!.docs, currentUid);
@@ -102,17 +107,16 @@ class _MessagePageState extends State<MessagePage> {
     );
   }
 
-  Widget _buildList(List<QueryDocumentSnapshot> docs, String currentUid) {
+  Widget _buildList(List<QueryDocumentSnapshot> docs, String? currentUid) {
     return ListView.builder(
       itemCount: docs.length,
       itemBuilder: (_, i) {
         var data = docs[i].data() as Map<String, dynamic>;
-        // follower collection me uid hoga, users collection me data
-        String uid = data['uid'] ?? docs[i].id;
-        String username = data['username'] ?? "user_$i";
-        String photo = data['photoURL'] ?? data['userPhoto'] ?? "";
+        String uid = data['uid']?? docs[i].id;
+        String username = data['username']?? data['displayName']?? "user_$i";
+        String photo = data['photoURL']?? data['userPhoto']?? "";
 
-        if(uid == currentUid) return SizedBox(); // khud ko mat dikhao
+        if (uid == currentUid) return SizedBox.shrink();
 
         return ListTile(
           leading: CircleAvatar(
@@ -124,10 +128,8 @@ class _MessagePageState extends State<MessagePage> {
           trailing: Icon(Icons.chat_bubble_outline),
           onTap: () async {
             bool ok = await _checkLogin();
-            if(!ok) return;
-            // Yaha par chat page par le jao
+            if (!ok) return;
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$username se chat start")));
-            // Navigator.push(context, MaterialPageRoute(builder: (_)=> ChatPage(otherUid: uid, otherName: username)));
           },
         );
       },
