@@ -22,22 +22,35 @@ class LoginDialog extends StatelessWidget {
       final user = userCred.user;
       if (user == null) return;
 
-      String displayName = user.displayName ?? googleUser.displayName ?? "Yuopni User";
+      String displayName = user.displayName?? googleUser.displayName?? "Yuopni User";
+      String email = user.email?? "";
+
+      // SEARCH KE LIYE KEYWORDS BANAO
+      List<String> searchKeys = [];
+      String lowerName = displayName.toLowerCase();
+      searchKeys.add(lowerName); // pura naam
+      searchKeys.addAll(lowerName.split(' ')); // pehla naam, dusra naam alag
+      if (email.isNotEmpty) {
+        searchKeys.add(email.toLowerCase()); // pura email
+        searchKeys.add(email.split('@')[0].toLowerCase()); // email ka pehla hissa
+      }
 
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'uid': user.uid,
         'username': displayName,
-        'username_search': displayName.toLowerCase(),
-        'email': user.email ?? "",
-        'photoURL': user.photoURL ?? "",
-        'userPhoto': user.photoURL ?? "",
+        'username_search': lowerName,
+        'searchKeys': searchKeys, // YE NAYA HAI - isse search 100% kaam karega
+        'email': email,
+        'email_search': email.toLowerCase(),
+        'photoURL': user.photoURL?? "",
+        'userPhoto': user.photoURL?? "",
         'createdAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
       if (context.mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Welcome $displayName !")),
+          SnackBar(content: Text("Welcome $displayName!")),
         );
       }
     } catch (e) {
@@ -55,10 +68,7 @@ class LoginDialog extends StatelessWidget {
       title: const Text("Login Karo"),
       content: const Text("Like, Comment, Post, Upload karne ke liye login zaroori hai"),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Cancel"),
-        ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
         ElevatedButton.icon(
           icon: const Icon(Icons.login),
           label: const Text("Google se Login"),
