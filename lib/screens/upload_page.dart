@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 
 class UploadPage extends StatefulWidget {
   const UploadPage({super.key});
@@ -26,7 +26,7 @@ class _UploadPageState extends State<UploadPage> {
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    final xfile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 30);
+    final xfile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70); // 30 se 70 kar diya - quality sahi rahegi aur size kam
     if (xfile != null) setState(() { _file = File(xfile.path); _isVideo = false; });
   }
 
@@ -36,19 +36,29 @@ class _UploadPageState extends State<UploadPage> {
     if (xfile != null) setState(() { _file = File(xfile.path); _isVideo = true; });
   }
 
-  Future<String> _uploadToCloudinary(File file, bool isVideo) async {
+  // YAHI MAIN FIX HAI - % KE SATH UPLOAD
+  Future<String> _uploadToCloudinary(File file, bool isVideo, Function(double) onProgress) async {
     String type = isVideo ? "video" : "image";
-    var url = Uri.parse("https://api.cloudinary.com/v1_1/$cloudName/$type/upload");
-    var request = http.MultipartRequest("POST", url);
-    request.fields['upload_preset'] = uploadPreset;
-    request.files.add(await http.MultipartFile.fromPath('file', file.path));
+    Dio dio = Dio();
+    
+    FormData formData = FormData.fromMap({
+      'upload_preset': uploadPreset,
+      'file': await MultipartFile.fromFile(file.path),
+    });
 
-    var streamedResponse = await request.send();
-    var resBody = await streamedResponse.stream.bytesToString();
-    var data = json.decode(resBody);
+    var response = await dio.post(
+      "https://api.cloudinary.com/v1_1/$cloudName/$type/upload",
+      data: formData,
+      onSendProgress: (int sent, int total) {
+        if (total != 0) {
+          double p = sent / total * 100;
+          onProgress(p);
+        }
+      },
+    );
 
-    if (data['secure_url'] == null) throw Exception("Cloudinary error: $resBody");
-    return data['secure_url'];
+    if (response.data['secure_url'] == null) throw Exception("Cloudinary error: ${response.data}");
+    return response.data['secure_url'];
   }
 
   Future<void> _upload() async {
@@ -61,19 +71,14 @@ class _UploadPageState extends State<UploadPage> {
       return;
     }
 
-    int sizeInMB = await _file!.length() ~/ (1024 * 1024);
-    if (_isVideo && sizeInMB > 15) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Video bada hai ${sizeInMB}MB, 15MB se kam chuno")));
-      return;
-    }
-
     setState(() { _isUploading = true; _progress = 0; });
 
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
-      final time = DateTime.now().millisecondsSinceEpoch;
 
-      String downloadUrl = await _uploadToCloudinary(_file!, _isVideo);
+      String downloadUrl = await _uploadToCloudinary(_file!, _isVideo, (p) {
+        if (mounted) setState(() => _progress = p);
+      });
 
       String collectionName = _isVideo ? "reels" : "posts";
 
@@ -85,12 +90,13 @@ class _UploadPageState extends State<UploadPage> {
         'mediaUrl': downloadUrl,
         'videoUrl': downloadUrl,
         'imageUrl': downloadUrl,
+        'thumbnail': downloadUrl, // profile me yehi thumbnail ke roop me tez khulega
         'isVideo': _isVideo,
         'username': FirebaseAuth.instance.currentUser!.displayName ?? "User",
         'userPhoto': FirebaseAuth.instance.currentUser!.photoURL ?? "",
         'createdAt': FieldValue.serverTimestamp(),
-        'likes': 0,
-        'timestamp': time,
+        'likes': [], // 0 nahi, [] rakho warna like button crash karega
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
 
       if (mounted) {
@@ -101,7 +107,7 @@ class _UploadPageState extends State<UploadPage> {
       print("Upload error $e");
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
-      if (mounted) setState(() { _isUploading = false; _progress = 0; });
+      if (mounted) setState(() { _isUploading = false; });
     }
   }
 
@@ -126,21 +132,23 @@ class _UploadPageState extends State<UploadPage> {
             child: _file == null
                 ? const Icon(Icons.videocam, size: 60, color: Colors.green)
                 : _isVideo
-                    ? const Icon(Icons.video_file, size: 60, color: Colors.green)
+                    ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.video_file, size: 60, color: Colors.green), Text(_file!.path.split('/').last, style: TextStyle(color: Colors.white70, fontSize: 12))])
                     : Image.file(_file!, fit: BoxFit.cover),
           ),
           const SizedBox(height: 12),
           Row(children: [
-            Expanded(child: OutlinedButton(onPressed: _pickImage, child: const Text("Photo Chuno"))),
+            Expanded(child: OutlinedButton(onPressed: _isUploading? null : _pickImage, child: const Text("Photo Chuno"))),
             const SizedBox(width: 10),
-            Expanded(child: OutlinedButton(onPressed: _pickVideo, child: const Text("Video/Reel Chuno"))),
+            Expanded(child: OutlinedButton(onPressed: _isUploading? null : _pickVideo, child: const Text("Video/Reel Chuno"))),
           ]),
           const SizedBox(height: 20),
           if (_isUploading)
             Column(children: [
-              const LinearProgressIndicator(),
-              const SizedBox(height: 8),
-              const Text("Upload ho raha hai, thoda wait karo...", style: TextStyle(color: Colors.white70)),
+              LinearProgressIndicator(value: _progress/100, backgroundColor: Colors.white24, color: Colors.purple.shade200),
+              const SizedBox(height: 10),
+              Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai...", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              const Text("App band mat karo, notification me bhi dekh sakte ho", style: TextStyle(color: Colors.white54, fontSize: 11)),
               const SizedBox(height: 12),
             ]),
           SizedBox(
@@ -148,7 +156,7 @@ class _UploadPageState extends State<UploadPage> {
             child: ElevatedButton(
               onPressed: _isUploading ? null : _upload,
               style: ElevatedButton.styleFrom(backgroundColor: Colors.purple.shade200, padding: const EdgeInsets.symmetric(vertical: 14)),
-              child: _isUploading ? const CircularProgressIndicator() : const Text("Upload Karo"),
+              child: _isUploading ? Row(mainAxisAlignment: MainAxisAlignment.center, children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)), SizedBox(width: 10), Text("${_progress.toStringAsFixed(0)}%")]) : const Text("Upload Karo", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
             ),
           ),
         ]),
