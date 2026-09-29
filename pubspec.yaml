@@ -26,6 +26,12 @@ dependencies:
   firebase_storage: ^11.6.0
   flutter_local_notifications: ^17.1.2
   dio: ^5.4.0
+  video_player: ^2.7.2
+  chewie: ^1.8.1
+  pip_view: ^0.0.8      
+  miniplayer: ^1.0.4       
+  audio_service: ^0.18.15   
+  wakelock_plus: ^1.2.5    
 
 dev_dependencies:
   flutter_test:
