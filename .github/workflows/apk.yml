@@ -7,16 +7,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.29.3'
           channel: 'stable'
+
+      - name: Decode Keystore
+        run: |
+          base64 --decode android/app/keystore.b64 > android/app/upload-keystore.jks
+          echo "Keystore decoded:"
+          ls -lh android/app/*.jks
+
+      - name: Create key.properties
+        run: |
+          echo "storePassword=yuopni123" > android/key.properties
+          echo "keyPassword=yuopni123" >> android/key.properties
+          echo "keyAlias=yuopni" >> android/key.properties
+          echo "storeFile=upload-keystore.jks" >> android/key.properties
+          cat android/key.properties
+
+      - name: Show SHA1 (add this to Firebase)
+        run: |
+          keytool -list -v -keystore android/app/upload-keystore.jks -alias yuopni -storepass yuopni123 | grep -A1 "SHA1"
+
       - run: flutter pub get
+
       - run: flutter build apk --release
+
       - uses: actions/upload-artifact@v4
         with:
           name: yuopni-apk
