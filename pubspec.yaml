@@ -28,7 +28,7 @@ dependencies:
   dio: ^5.4.0
   chewie: ^1.8.1
   pip_view: ^0.0.8      
-  miniplayer: ^1.0.4       
+  miniplayer: ^1.0.1     
   audio_service: ^0.18.15   
   wakelock_plus: ^1.2.5    
 
