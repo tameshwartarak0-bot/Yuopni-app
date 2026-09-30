@@ -38,10 +38,8 @@ class _UploadPageState extends State<UploadPage> {
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const init = InitializationSettings(android: android);
     await _notif.initialize(init);
-
     final androidPlugin = _notif.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     await androidPlugin?.requestNotificationsPermission();
-
     const channel = AndroidNotificationChannel(
       'yuopni_upload',
       'Yuopni Uploads',
@@ -54,7 +52,6 @@ class _UploadPageState extends State<UploadPage> {
   Future<void> _updateNotif(double p) async {
     if (p < 0) p = 0;
     if (p > 100) p = 100;
-    
     final androidDetails = AndroidNotificationDetails(
       'yuopni_upload',
       'Yuopni Uploads',
@@ -149,7 +146,6 @@ class _UploadPageState extends State<UploadPage> {
       } else {
         url = await _uploadToCloudinary(_file!, _isVideo, (p) { if(mounted) setState(()=> _progress=p); });
       }
-      
       String title = _titleCtrl.text.trim();
       String collectionName = _isLongVideo ? "long_videos" : (_isVideo ? "reels" : "posts");
       await FirebaseFirestore.instance.collection(collectionName).add({
@@ -167,10 +163,8 @@ class _UploadPageState extends State<UploadPage> {
         'likes': [], 'views': 0,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
-
       await _notif.cancel(0);
       await _notif.show(0, 'Upload Complete!', '$title upload ho gaya', const NotificationDetails(android: AndroidNotificationDetails('yuopni_upload','Yuopni Uploads', importance: Importance.high)));
-      
       if (mounted) Navigator.pop(context);
     } catch (e) {
       await _notif.cancel(0);
@@ -190,29 +184,54 @@ class _UploadPageState extends State<UploadPage> {
       appBar: AppBar(title: Text(_isLongVideo ? "Long Video Upload" : "Post / Upload"), backgroundColor: Colors.black),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        child: Column(children: [
-          TextField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Title / Tag likho", labelStyle: const TextStyle(color: Colors.white54), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))))),
-          const SizedBox(height: 12),
-          TextField(controller: _descCtrl, maxLines: 4, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Description likho", labelStyle: const TextStyle(color: Colors.white54), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))))),
-          const SizedBox(height: 12),
-          Container(height: 200, width: double.infinity, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)), child: _file == null ? const Icon(Icons.videocam, size: 60, color: Colors.green) : _isVideo ? (_previewCtrl?.value.isInitialized == true ? ClipRRect(borderRadius: BorderRadius.circular(12), child: AspectRatio(aspectRatio: _previewCtrl!.value.aspectRatio, child: VideoPlayer(_previewCtrl!))) : Center(child: Text(_file!.path.split('/').last, style: const TextStyle(color: Colors.white70)))) : ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_file!, fit: BoxFit.cover, width: double.infinity))),
-          const SizedBox(height: 12),
-          Row(children: [
-            Expanded(child: OutlinedButton(onPressed: _isUploading ? null : _pickImage, child: const Text("Photo"))),
-            const SizedBox(width: 6),
-            Expanded(child: OutlinedButton(onPressed: _isUploading ? null : _pickVideo, child: const Text("Reel 30s"))),
-            const SizedBox(width: 6),
-            Expanded(child: OutlinedButton(onPressed: _isUploading ? null : _pickLongVideo, style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text("Long Video"))),
-          ]),
-          const SizedBox(height: 20),
-          if (_isUploading) Column(children: [
-            LinearProgressIndicator(value: _progress/100, minHeight: 8, color: _isLongVideo ? Colors.red : Colors.green, backgroundColor: Colors.white24),
+        child: Column(
+          children: [
+            TextField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Title / Tag likho", labelStyle: const TextStyle(color: Colors.white54), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)))),
+            const SizedBox(height: 12),
+            TextField(controller: _descCtrl, maxLines: 4, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Description likho", labelStyle: const TextStyle(color: Colors.white54), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)))),
+            const SizedBox(height: 12),
+            Container(
+              height: 200,
+              width: double.infinity,
+              decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)),
+              child: _file == null
+                  ? const Icon(Icons.videocam, size: 60, color: Colors.green)
+                  : _isVideo
+                      ? (_previewCtrl?.value.isInitialized == true
+                          ? ClipRRect(borderRadius: BorderRadius.circular(12), child: AspectRatio(aspectRatio: _previewCtrl!.value.aspectRatio, child: VideoPlayer(_previewCtrl!)))
+                          : Center(child: Text(_file!.path.split('/').last, style: const TextStyle(color: Colors.white70))))
+                      : ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_file!, fit: BoxFit.cover, width: double.infinity)),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: OutlinedButton(onPressed: _isUploading ? null : _pickImage, child: const Text("Photo"))),
+                const SizedBox(width: 6),
+                Expanded(child: OutlinedButton(onPressed: _isUploading ? null : _pickVideo, child: const Text("Reel 30s"))),
+                const SizedBox(width: 6),
+                Expanded(child: OutlinedButton(onPressed: _isUploading ? null : _pickLongVideo, style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text("Long Video"))),
+              ],
+            ),
+            const SizedBox(height: 20),
+            if (_isUploading)
+              Column(
+                children: [
+                  LinearProgressIndicator(value: _progress/100, minHeight: 8, color: _isLongVideo ? Colors.red : Colors.green, backgroundColor: Colors.white24),
+                  const SizedBox(height: 10),
+                  Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai, thoda wait karo...", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ],
+              ),
             const SizedBox(height: 10),
-            Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai, thoda wait karo...", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
-          ]),
-          const SizedBox(height: 10),
-          SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _isUploading ? null : _upload, style: ElevatedButton.styleFrom(backgroundColor: _isLongVideo ? Colors.red : Colors.white, foregroundColor: _isLongVideo ? Colors.white : Colors.black, padding: const EdgeInsets.symmetric(vertical: 14)), child: Text(_isUploading ? "${_progress.toStringAsFixed(0)}% ..." : "Upload Karo"))),
-        ]),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isUploading ? null : _upload,
+                style: ElevatedButton.styleFrom(backgroundColor: _isLongVideo ? Colors.red : Colors.white, foregroundColor: _isLongVideo ? Colors.white : Colors.black, padding: const EdgeInsets.symmetric(vertical: 14)),
+                child: Text(_isUploading ? "${_progress.toStringAsFixed(0)}% ..." : "Upload Karo"),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
