@@ -16,18 +16,20 @@ jobs:
           flutter-version: '3.29.3'
           channel: 'stable'
 
+      - name: Decode Keystore
+        run: |
+          base64 --decode android/app/keystore.b64 > android/app/upload-keystore.jks
+          ls -lh android/app/*.jks
+
       - name: Create key.properties
         run: |
           echo "storePassword=yuopni123" > android/key.properties
           echo "keyPassword=yuopni123" >> android/key.properties
           echo "keyAlias=yuopni" >> android/key.properties
           echo "storeFile=upload-keystore.jks" >> android/key.properties
-          cat android/key.properties
-          ls -lh android/app/*.jks
 
       - name: Show SHA1
-        run: |
-          keytool -list -v -keystore android/app/upload-keystore.jks -alias yuopni -storepass yuopni123 | grep SHA1
+        run: keytool -list -v -keystore android/app/upload-keystore.jks -alias yuopni -storepass yuopni123 | grep SHA1
 
       - run: flutter pub get
       - run: flutter build apk --release
