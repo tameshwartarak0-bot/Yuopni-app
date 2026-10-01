@@ -3,11 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // <-- NAYA ADD KIYA
 
 class UploadPage extends StatefulWidget {
   const UploadPage({super.key});
@@ -29,10 +29,19 @@ class _UploadPageState extends State<UploadPage> {
   static const String uploadPreset = "yuopni_upload";
   final FlutterLocalNotificationsPlugin _notif = FlutterLocalNotificationsPlugin();
 
+  // SUPABASE CONFIG - TUMHARA
+  static const String supabaseUrl = "https://aynsnbgulloedotmjlcq.supabase.co";
+  static const String supabaseKey = "sb_publishable_nFfjqpnLm5FUZD7GbVXlYw_X3vkM_sj";
+  static const String bucketName = "yuopni-videos";
+
   @override
   void initState() {
     super.initState();
     _initNotif();
+    // Supabase init ek baar
+    try {
+      Supabase.initialize(url: supabaseUrl, anonKey: supabaseKey);
+    } catch(e) {}
   }
 
   Future<void> _initNotif() async {
@@ -120,35 +129,30 @@ class _UploadPageState extends State<UploadPage> {
     return response.data['secure_url'];
   }
 
-  // ===== YEH FIX KIYA HAI - LONG VIDEO KE LIYE =====
-  Future<String> _uploadLongToFirebase(File file, Function(double) onProgress) async {
+  // ===== YEH NAYA HAI - SUPABASE LONG VIDEO UPLOAD =====
+  Future<String> _uploadLongToSupabase(File file, Function(double) onProgress) async {
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final fileName = "${uid}_${DateTime.now().millisecondsSinceEpoch}.mp4";
-      final ref = FirebaseStorage.instance.ref().child("long_videos/$fileName");
       
-      final metadata = SettableMetadata(contentType: 'video/mp4', customMetadata: {'uid': uid});
-      final UploadTask task = ref.putFile(file, metadata);
-
-      task.snapshotEvents.listen((s) {
-        if (s.totalBytes > 0) {
-          double p = (s.bytesTransferred / s.totalBytes * 100);
-          onProgress(p);
-          _updateNotif(p);
-        }
-      });
-
-      final TaskSnapshot snapshot = await task;
+      final supabase = Supabase.instance.client;
       
-      if (snapshot.state == TaskState.success) {
-        // IMPORTANT: snapshot.ref se hi URL lo, ref se nahi
-        String downloadUrl = await snapshot.ref.getDownloadURL();
-        return downloadUrl;
-      } else {
-        throw Exception("Upload failed: ${snapshot.state}");
-      }
-    } on FirebaseException catch (e) {
-      throw Exception("Firebase Error: ${e.code} - ${e.message}");
+      // Upload
+      await supabase.storage.from(bucketName).upload(
+        fileName, 
+        file,
+        fileOptions: const FileOptions(cacheControl: '3600', upsert: false)
+      );
+
+      // Public URL nikalo
+      final String publicUrl = supabase.storage.from(bucketName).getPublicUrl(fileName);
+      
+      onProgress(100);
+      await _updateNotif(100);
+      
+      return publicUrl;
+    } catch (e) {
+      throw Exception("Supabase Error: $e");
     }
   }
 
@@ -162,15 +166,15 @@ class _UploadPageState extends State<UploadPage> {
     try {
       String url;
       if (_isLongVideo) {
-        url = await _uploadLongToFirebase(_file!, (p) { if(mounted) setState(()=> _progress=p); });
+        // AB SUPABASE PE JAYEGA
+        url = await _uploadLongToSupabase(_file!, (p) { if(mounted) setState(()=> _progress=p); });
       } else {
         url = await _uploadToCloudinary(_file!, _isVideo, (p) { if(mounted) setState(()=> _progress=p); });
       }
 
       String title = _titleCtrl.text.trim();
       String collectionName = _isLongVideo ? "long_videos" : (_isVideo ? "reels" : "posts");
-      
-      // Pehle doc banao taaki ID mile
+
       DocumentReference docRef = FirebaseFirestore.instance.collection(collectionName).doc();
       String docId = docRef.id;
       String shareLink = "https://yuopni.com/video?id=$docId&type=$collectionName";
@@ -190,16 +194,15 @@ class _UploadPageState extends State<UploadPage> {
         'likes': [], 'views': 0,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
         'docId': docId,
-        'shareLink': shareLink, // <-- Share link save ho raha hai
+        'shareLink': shareLink,
       });
 
       await _notif.cancel(0);
       await _notif.show(0, 'Upload Complete!', '$title upload ho gaya', const NotificationDetails(android: AndroidNotificationDetails('yuopni_upload','Yuopni Uploads', importance: Importance.high)));
-      
+
       if (mounted) {
-        // Upload ke baad share ka option dikhao
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text("Upload ho gaya! Share karo"),
+          content: const Text("Upload ho gaya! Share karo"),
           action: SnackBarAction(label: "Share", onPressed: (){
             Share.share("Yuopni pe dekho: $title\n$shareLink");
           }),
@@ -258,7 +261,7 @@ class _UploadPageState extends State<UploadPage> {
                 children: [
                   LinearProgressIndicator(value: _progress/100, minHeight: 8, color: _isLongVideo ? Colors.red : Colors.green, backgroundColor: Colors.white24),
                   const SizedBox(height: 10),
-                  Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai, thoda wait karo...", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai...", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ],
               ),
             const SizedBox(height: 10),
