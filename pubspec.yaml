@@ -21,7 +21,7 @@ dependencies:
   camera: ^0.10.5+9
   permission_handler: ^11.3.1
   cached_network_image: ^3.3.0
-  share_plus: ^8.0.0
+  share_plus: ^10.0.2
   firebase_storage: ^11.6.0
   flutter_local_notifications: ^17.1.2
   dio: ^5.4.0
@@ -30,6 +30,7 @@ dependencies:
   miniplayer: ^1.0.1     
   audio_service: ^0.18.15   
   wakelock_plus: ^1.2.5    
+  app_links: ^6.3.2
 
 dev_dependencies:
   flutter_test:
