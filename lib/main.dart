@@ -3,15 +3,21 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:app_links/app_links.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // <-- NAYA
 import 'screens/demo_page.dart';
 import 'screens/login_page.dart';
 import 'screens/main_screen.dart';
-// Apna video player screen import karo
-// import 'screens/video_detail_screen.dart'; 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  
+  // SUPABASE INIT - TUMHARA NAYA
+  await Supabase.initialize(
+    url: 'https://aynsnbgulloedotmjlcq.supabase.co',
+    anonKey: 'sb_publishable_nFfjqpnLm5FUZD7GbVXlYw_X3vkM_sj',
+  );
+
   final prefs = await SharedPreferences.getInstance();
   bool seenDemo = prefs.getBool('seenDemo') ?? false;
   User? firebaseUser = FirebaseAuth.instance.currentUser;
@@ -39,8 +45,6 @@ class _YuopniAppState extends State<YuopniApp> {
 
   Future<void> _initDeepLinks() async {
     _appLinks = AppLinks();
-
-    // 1. App band tha aur link se khula
     try {
       final initialUri = await _appLinks.getInitialLink();
       if (initialUri != null) {
@@ -49,8 +53,6 @@ class _YuopniAppState extends State<YuopniApp> {
     } catch (e) {
       debugPrint("Initial link error: $e");
     }
-
-    // 2. App khula hai aur link aaya
     _appLinks.uriLinkStream.listen((uri) {
       _handleLink(uri);
     }, onError: (e) {
@@ -63,17 +65,7 @@ class _YuopniAppState extends State<YuopniApp> {
     if (uri.host.contains("yuopni.com") && uri.path.contains("/video")) {
       String? videoId = uri.queryParameters['id'];
       String? type = uri.queryParameters['type'] ?? 'long_videos';
-      
       if (videoId != null && _navigatorKey.currentContext != null) {
-        // Yahan apna Video Detail Screen open karo
-        // Example:
-        /*
-        _navigatorKey.currentState?.push(MaterialPageRoute(
-          builder: (_) => VideoDetailScreen(videoId: videoId, type: type),
-        ));
-        */
-        
-        // Filhal ke liye SnackBar
         ScaffoldMessenger.of(_navigatorKey.currentContext!).showSnackBar(
           SnackBar(content: Text("Video khul raha hai: $videoId")),
         );
@@ -94,7 +86,6 @@ class _YuopniAppState extends State<YuopniApp> {
 
   Widget _getStartPage() {
     if (!widget.seenDemo) return DemoPage();
-    // Login force nahi, direct Main
     return MainScreen();
   }
 }
