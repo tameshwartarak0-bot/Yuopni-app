@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:video_player/video_player.dart';
+import 'package:share_plus/share_plus.dart';
 
 class UploadPage extends StatefulWidget {
   const UploadPage({super.key});
@@ -53,13 +54,12 @@ class _UploadPageState extends State<UploadPage> {
     if (p < 0) p = 0;
     if (p > 100) p = 100;
     final androidDetails = AndroidNotificationDetails(
-      'yuopni_upload',
-      'Yuopni Uploads',
+      'yuopni_upload', 'Yuopni Uploads',
       channelDescription: 'Yuopni upload progress',
       importance: Importance.max,
       priority: Priority.high,
       ongoing: p < 100,
-      autoCancel: false,
+      autoCancel: p >= 100,
       showProgress: true,
       maxProgress: 100,
       progress: p.toInt(),
@@ -120,16 +120,36 @@ class _UploadPageState extends State<UploadPage> {
     return response.data['secure_url'];
   }
 
+  // ===== YEH FIX KIYA HAI - LONG VIDEO KE LIYE =====
   Future<String> _uploadLongToFirebase(File file, Function(double) onProgress) async {
-    final ref = FirebaseStorage.instance.ref().child("long_videos/${FirebaseAuth.instance.currentUser!.uid}_${DateTime.now().millisecondsSinceEpoch}.mp4");
-    final task = ref.putFile(file);
-    task.snapshotEvents.listen((s) {
-      double p = s.bytesTransferred / s.totalBytes * 100;
-      onProgress(p);
-      _updateNotif(p);
-    });
-    await task;
-    return await ref.getDownloadURL();
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final fileName = "${uid}_${DateTime.now().millisecondsSinceEpoch}.mp4";
+      final ref = FirebaseStorage.instance.ref().child("long_videos/$fileName");
+      
+      final metadata = SettableMetadata(contentType: 'video/mp4', customMetadata: {'uid': uid});
+      final UploadTask task = ref.putFile(file, metadata);
+
+      task.snapshotEvents.listen((s) {
+        if (s.totalBytes > 0) {
+          double p = (s.bytesTransferred / s.totalBytes * 100);
+          onProgress(p);
+          _updateNotif(p);
+        }
+      });
+
+      final TaskSnapshot snapshot = await task;
+      
+      if (snapshot.state == TaskState.success) {
+        // IMPORTANT: snapshot.ref se hi URL lo, ref se nahi
+        String downloadUrl = await snapshot.ref.getDownloadURL();
+        return downloadUrl;
+      } else {
+        throw Exception("Upload failed: ${snapshot.state}");
+      }
+    } on FirebaseException catch (e) {
+      throw Exception("Firebase Error: ${e.code} - ${e.message}");
+    }
   }
 
   Future<void> _upload() async {
@@ -146,9 +166,16 @@ class _UploadPageState extends State<UploadPage> {
       } else {
         url = await _uploadToCloudinary(_file!, _isVideo, (p) { if(mounted) setState(()=> _progress=p); });
       }
+
       String title = _titleCtrl.text.trim();
       String collectionName = _isLongVideo ? "long_videos" : (_isVideo ? "reels" : "posts");
-      await FirebaseFirestore.instance.collection(collectionName).add({
+      
+      // Pehle doc banao taaki ID mile
+      DocumentReference docRef = FirebaseFirestore.instance.collection(collectionName).doc();
+      String docId = docRef.id;
+      String shareLink = "https://yuopni.com/video?id=$docId&type=$collectionName";
+
+      await docRef.set({
         'uid': FirebaseAuth.instance.currentUser!.uid,
         'title': title,
         'title_search': title.toLowerCase(),
@@ -162,10 +189,23 @@ class _UploadPageState extends State<UploadPage> {
         'createdAt': FieldValue.serverTimestamp(),
         'likes': [], 'views': 0,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
+        'docId': docId,
+        'shareLink': shareLink, // <-- Share link save ho raha hai
       });
+
       await _notif.cancel(0);
       await _notif.show(0, 'Upload Complete!', '$title upload ho gaya', const NotificationDetails(android: AndroidNotificationDetails('yuopni_upload','Yuopni Uploads', importance: Importance.high)));
-      if (mounted) Navigator.pop(context);
+      
+      if (mounted) {
+        // Upload ke baad share ka option dikhao
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("Upload ho gaya! Share karo"),
+          action: SnackBarAction(label: "Share", onPressed: (){
+            Share.share("Yuopni pe dekho: $title\n$shareLink");
+          }),
+        ));
+        Navigator.pop(context);
+      }
     } catch (e) {
       await _notif.cancel(0);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
