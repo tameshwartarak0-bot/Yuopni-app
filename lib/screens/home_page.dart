@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
-import 'package:audioplayers/audioplayers.dart';
 import '../global.dart';
-import 'upload_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -46,7 +44,6 @@ class HomePage extends StatelessWidget {
           ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              // FIX: orderBy hata diya - ab koi field missing ho to bhi chalega
               stream: FirebaseFirestore.instance.collection('posts').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
@@ -58,8 +55,7 @@ class HomePage extends StatelessWidget {
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                   return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.white)));
                 }
-                
-                // Client side sorting - createdAt ya timestamp jo bhi ho
+
                 var docs = snapshot.data!.docs.toList();
                 docs.sort((a,b){
                   var da = (a.data() as Map<String,dynamic>);
@@ -89,7 +85,7 @@ class HomePage extends StatelessWidget {
         var data = docs[i].data() as Map<String, dynamic>;
         String mediaUrl = (data['mediaUrl']?? data['imageUrl']?? data['videoUrl']?? '').toString();
         String thumbUrl = (data['thumbnail']?? mediaUrl).toString();
-        bool isVideo = data['isVideo'] == true || mediaUrl.contains(".mp4");
+        bool isVideo = data['isVideo'] == true || mediaUrl.toLowerCase().contains(".mp4");
         String songName = (data['songName']?? "No Song").toString();
         String duration = (data['durationText']?? "").toString();
         String title = (data['title']?? data['caption']?? '').toString();
@@ -106,24 +102,11 @@ class HomePage extends StatelessWidget {
                   child: (data['userPhoto']?? '').toString().isEmpty ? const Icon(Icons.person) : null,
                 ),
                 title: Text(data['username']?? 'User', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                    if (songName!= "No Song")
-                      Row(children: [
-                        const Icon(Icons.music_note, color: Colors.pink, size: 12),
-                        const SizedBox(width: 4),
-                        Expanded(child: Text(songName, style: const TextStyle(color: Colors.pink, fontSize: 11, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
-                      ]),
-                  ],
-                ),
+                subtitle: Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12)),
               ),
               if (!isVideo && mediaUrl.isNotEmpty)
-                CachedNetworkImage(imageUrl: mediaUrl, width: double.infinity, fit: BoxFit.cover, placeholder: (_,__)=> Container(height:200,color: Colors.black12), errorWidget: (_,__,___)=> const Icon(Icons.broken_image)),
+                CachedNetworkImage(imageUrl: mediaUrl, width: double.infinity, fit: BoxFit.cover, placeholder: (_,__)=> Container(height:200,color: Colors.black12), errorWidget: (_,__,___)=> const Icon(Icons.broken_image, color: Colors.white)),
               if (isVideo) VideoThumbCard(videoUrl: mediaUrl, thumbUrl: thumbUrl, songName: songName, duration: duration),
-              if ((data['description']?? '').toString().isNotEmpty)
-                Padding(padding: const EdgeInsets.all(10), child: Text(data['description']?? '', style: const TextStyle(color: Colors.white, fontSize: 13))),
             ],
           ),
         );
@@ -140,41 +123,65 @@ class VideoThumbCard extends StatefulWidget {
 
 class _VideoThumbCardState extends State<VideoThumbCard> {
   VideoPlayerController? _ctrl;
-  bool _playing=false;
+  bool _isInitialized = false;
 
-  void _play() async {
-    if(_playing){
-      await _ctrl?.pause();
-      setState(()=>_playing=false);
-      return;
-    }
-    _ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl));
-    await _ctrl!.initialize();
-    _ctrl!.setLooping(true);
-    _ctrl!.play();
-    setState(()=>_playing=true);
+  @override
+  void initState() {
+    super.initState();
+    _initializeAndPlay();
   }
 
-  @override void dispose(){ _ctrl?.dispose(); super.dispose(); }
-
-  @override Widget build(BuildContext context){
-    if(_playing && _ctrl!=null && _ctrl!.value.isInitialized){
-      return GestureDetector(onTap: _play, child: Stack(children:[
-        AspectRatio(aspectRatio: _ctrl!.value.aspectRatio, child: VideoPlayer(_ctrl!)),
-        Positioned(bottom:8, left:8, right:8, child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children:[
-          Container(padding: const EdgeInsets.symmetric(horizontal:6, vertical:2), decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)), child: Text("${widget.duration} • ${widget.songName}", style: const TextStyle(color: Colors.white, fontSize:10))),
-          const Icon(Icons.pause_circle, color: Colors.white70),
-        ]))
-      ]));
+  Future<void> _initializeAndPlay() async {
+    try {
+      _ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl));
+      await _ctrl!.initialize();
+      await _ctrl!.setLooping(true);
+      await _ctrl!.setVolume(1.0);
+      await _ctrl!.play();
+      if(mounted) setState(()=> _isInitialized = true);
+    } catch (e) {
+      debugPrint("Video Error: $e");
     }
-    return GestureDetector(onTap: _play, child: Stack(alignment: Alignment.center, children:[
-      CachedNetworkImage(imageUrl: widget.thumbUrl, height: 400, width: double.infinity, fit: BoxFit.cover, errorWidget: (_,__,___)=> Container(height:400,color: Colors.black)),
-      Container(color: Colors.black38, height: 400),
-      const Icon(Icons.play_circle_fill, size: 70, color: Colors.white70),
-      Positioned(bottom:8, left:8, child: Container(padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)), child: Row(children:[
-        if(widget.duration.isNotEmpty) Text(widget.duration, style: const TextStyle(color: Colors.white, fontSize:12)),
-        if(widget.songName!="No Song")...[const SizedBox(width:6), const Icon(Icons.music_note, color: Colors.pink, size:12), Text(widget.songName, style: const TextStyle(color: Colors.pink, fontSize:11))]
-      ]))),
-    ]));
+  }
+
+  @override
+  void dispose(){ _ctrl?.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context){
+    if(_isInitialized && _ctrl!=null){
+      return GestureDetector(
+        onTap: (){
+          if(_ctrl!.value.isPlaying){
+            _ctrl!.pause();
+          } else {
+            _ctrl!.play();
+          }
+          setState((){});
+        },
+        child: Stack(alignment: Alignment.center, children:[
+          AspectRatio(aspectRatio: _ctrl!.value.aspectRatio, child: VideoPlayer(_ctrl!)),
+          if(!_ctrl!.value.isPlaying)
+            const Icon(Icons.play_circle_fill, size: 70, color: Colors.white70),
+          // Song info - only show if real song
+          if(widget.songName != "No Song" && widget.songName.isNotEmpty)
+            Positioned(bottom:8, left:8, child: Container(
+              padding: const EdgeInsets.symmetric(horizontal:8, vertical:4), 
+              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)), 
+              child: Row(children:[
+                if(widget.duration.isNotEmpty) Text(widget.duration, style: const TextStyle(color: Colors.white, fontSize:12)),
+                const SizedBox(width:6), 
+                const Icon(Icons.music_note, color: Colors.pink, size:12), 
+                Text(widget.songName, style: const TextStyle(color: Colors.white, fontSize:11))
+              ])
+            )),
+        ]),
+      );
+    }
+    // Loading state - clear thumb
+    return Stack(alignment: Alignment.center, children:[
+      CachedNetworkImage(imageUrl: widget.thumbUrl, height: 500, width: double.infinity, fit: BoxFit.cover, errorWidget: (_,__,___)=> Container(height:500,color: Colors.black, child: const Center(child: CircularProgressIndicator()))),
+      const CircularProgressIndicator(color: Colors.white),
+    ]);
   }
 }
