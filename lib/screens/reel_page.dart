@@ -90,13 +90,13 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
 
     if (url.isNotEmpty && url.contains('http')) {
       _ctrl = VideoPlayerController.networkUrl(Uri.parse(url))
-       ..initialize().then((_) {
+      ..initialize().then((_) {
           if (mounted) {
             setState(() => _isInit = true);
             _ctrl!.setLooping(true);
             _ctrl!.setVolume(1.0);
             _ctrl!.play();
-            _playSongIfAny(); // yahan song bajega
+            _playSongIfAny();
           }
         }).catchError((e) {
           if (mounted) setState(() => _isError = true);
@@ -110,7 +110,6 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     String songFull = (widget.data['songName']?? '').toString();
     if (songFull.isEmpty || songFull == 'No Song' || _songStarted) return;
     _songStarted = true;
-
     try {
       String songName = songFull.split(' @')[0];
       int startSec = 0;
@@ -118,7 +117,6 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
         String t = songFull.split('@')[1].replaceAll('s','').trim();
         startSec = int.tryParse(t)?? 0;
       }
-      // iTunes se real preview URL
       final res = await http.get(Uri.parse("https://itunes.apple.com/search?term=${Uri.encodeComponent(songName)}&media=music&limit=1&country=in"));
       if (res.statusCode == 200) {
         var j = jsonDecode(res.body);
@@ -143,20 +141,28 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
   }
 
   void _onShare() {
-    String videoLink = "https://yuopni.com/video?id=${widget.docId}";
+    // ✅ FIXED - Tumhara asli Firebase domain + SHA
+    final String videoLink = "https://yuopni-1c5e9.web.app/video?id=${widget.docId}";
+
     showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1A1A1A), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (_) => Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
       Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))),
       const SizedBox(height: 15),
-      ListTile(leading: const CircleAvatar(backgroundColor: Colors.orange, child: Icon(Icons.message, color: Colors.white)), title: const Text("Yuopni Message me bhejo", style: TextStyle(color: Colors.white)), subtitle: const Text("App ke andar share", style: TextStyle(color: Colors.white54)), onTap: (){
-        Navigator.pop(context);
-        // Yahan tumhara message page khulega
-        // Navigator.push(context, MaterialPageRoute(builder: (_)=> MessagePage(link: videoLink)));
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Message page: $videoLink")));
-      }),
-      ListTile(leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.share, color: Colors.white)), title: const Text("WhatsApp pe bhejo", style: TextStyle(color: Colors.white)), subtitle: Text(videoLink, style: const TextStyle(color: Colors.white54, fontSize: 12)), onTap: (){
-        Navigator.pop(context);
-        Share.share("Yuopni pe ye Reel dekho 🔥 $videoLink");
-      }),
+      ListTile(
+        leading: const CircleAvatar(backgroundColor: Colors.orange, child: Icon(Icons.message, color: Colors.white)),
+        title: const Text("Yuopni Message me bhejo", style: TextStyle(color: Colors.white)),
+        subtitle: const Text("App ke andar share", style: TextStyle(color: Colors.white54)),
+        onTap: (){
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Message page: $videoLink")));
+        }),
+      ListTile(
+        leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.share, color: Colors.white)),
+        title: const Text("WhatsApp pe bhejo", style: TextStyle(color: Colors.white)),
+        subtitle: Text(videoLink, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+        onTap: (){
+          Navigator.pop(context);
+          Share.share("Yuopni pe ye Reel dekho 🔥 $videoLink");
+        }),
       const SizedBox(height: 10),
     ])));
   }
@@ -169,7 +175,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
       child: Stack(fit: StackFit.expand, children: [
         _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 50))
         : _isInit && _ctrl!= null
-         ? GestureDetector(onTap: (){
+        ? GestureDetector(onTap: (){
               setState((){
                 if(_ctrl!.value.isPlaying){ _ctrl!.pause(); _songPlayer.pause(); }
                 else { _ctrl!.play(); _songPlayer.resume(); }
