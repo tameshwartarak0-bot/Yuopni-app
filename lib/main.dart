@@ -6,6 +6,7 @@ import 'package:app_links/app_links.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'screens/demo_page.dart';
 import 'screens/main_screen.dart';
+import 'screens/login_page.dart'; // Tumhara login page ka naam
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,14 +17,13 @@ void main() async {
   );
   final prefs = await SharedPreferences.getInstance();
   bool seenDemo = prefs.getBool('seenDemo') ?? false;
-  fb_auth.User? firebaseUser = fb_auth.FirebaseAuth.instance.currentUser;
-  runApp(YuopniApp(seenDemo: seenDemo, isLoggedIn: firebaseUser != null));
+  
+  runApp(YuopniApp(seenDemo: seenDemo));
 }
 
 class YuopniApp extends StatefulWidget {
   final bool seenDemo;
-  final bool isLoggedIn;
-  const YuopniApp({required this.seenDemo, required this.isLoggedIn, super.key});
+  const YuopniApp({required this.seenDemo, super.key});
   @override
   State<YuopniApp> createState() => _YuopniAppState();
 }
@@ -31,8 +31,10 @@ class YuopniApp extends StatefulWidget {
 class _YuopniAppState extends State<YuopniApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
   late AppLinks _appLinks;
+  
   @override
   void initState() { super.initState(); _initDeepLinks(); }
+  
   Future<void> _initDeepLinks() async {
     _appLinks = AppLinks();
     try {
@@ -41,6 +43,7 @@ class _YuopniAppState extends State<YuopniApp> {
     } catch (_) {}
     _appLinks.uriLinkStream.listen((uri) => _handleLink(uri));
   }
+  
   void _handleLink(Uri uri) {
     if (uri.host.contains("yuopni.com") && uri.path.contains("/video")) {
       String? videoId = uri.queryParameters['id'];
@@ -49,13 +52,30 @@ class _YuopniAppState extends State<YuopniApp> {
       }
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-      home: !widget.seenDemo ? DemoPage() : MainScreen(),
+      // FIX: Auth ko live suno, ek baar check nahi
+      home: !widget.seenDemo 
+        ? DemoPage() 
+        : StreamBuilder<fb_auth.User?>(
+            stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.white)));
+              }
+              // Agar user login hai to MainScreen, nahi to LoginPage
+              if (snapshot.hasData && snapshot.data != null) {
+                return MainScreen();
+              } else {
+                return LoginPage(); // Ya tumhara Auth page
+              }
+            },
+          ),
     );
   }
 }
