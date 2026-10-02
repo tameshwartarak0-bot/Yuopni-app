@@ -3,9 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'dart:convert';
 import '../widgets/login_dialog.dart';
 import 'reel_page.dart';
+import 'login_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -36,24 +38,36 @@ class _ProfilePageState extends State<ProfilePage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     final prefs = await SharedPreferences.getInstance();
-
     Map<String, dynamic> acc = {
       'uid': user.uid,
       'name': user.displayName?? "User",
       'email': user.email?? "",
       'photo': user.photoURL?? "",
     };
-
-    // Duplicate na ho
     savedAccounts.removeWhere((a) => a['uid'] == user.uid);
     savedAccounts.add(acc);
-
     await prefs.setString('yuopni_saved_accounts', jsonEncode(savedAccounts));
   }
 
   Future<void> _logout() async {
     await _saveCurrentAccount();
+    // FIX 1: Proper logout
+    await GoogleSignIn().signOut();
     await FirebaseAuth.instance.signOut();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('userEmail');
+    await prefs.remove('userName');
+    await prefs.remove('userPhoto');
+    // seenDemo ko rehne do, isLoggedIn ko hatao
+    await prefs.remove('isLoggedIn');
+
+    if (mounted) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
+    }
   }
 
   Future<void> _switchAccountDialog() async {
@@ -68,30 +82,25 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
             const SizedBox(height: 15),
-            const Text("Switch Account", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            const Text("Switch Account", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black)),
             const SizedBox(height: 10),
-            // Current User
             ListTile(
               leading: CircleAvatar(backgroundImage: FirebaseAuth.instance.currentUser?.photoURL!= null? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!) : null),
-              title: Text(FirebaseAuth.instance.currentUser?.displayName?? "Current User"),
+              title: Text(FirebaseAuth.instance.currentUser?.displayName?? "Current User", style: TextStyle(color: Colors.black)),
               subtitle: Text(FirebaseAuth.instance.currentUser?.email?? ""),
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-            // Saved Accounts
            ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
               leading: acc['photo']!= ""? CircleAvatar(backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(child: Text(acc['name'][0])),
-              title: Text(acc['name']),
+              title: Text(acc['name'], style: TextStyle(color: Colors.black)),
               subtitle: Text(acc['email']),
               onTap: () async {
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("${acc['name']} ke liye dobara login karo")));
-                await FirebaseAuth.instance.signOut();
-                if (mounted) showDialog(context: context, builder: (_) => const LoginDialog());
+                await _logout();
               },
             )),
             const SizedBox(height: 10),
-            // Add Account Button
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -100,8 +109,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 onPressed: () async {
                   Navigator.pop(context);
                   await _saveCurrentAccount();
-                  await FirebaseAuth.instance.signOut();
-                  if (mounted) showDialog(context: context, builder: (_) => const LoginDialog());
+                  await _logout();
                 },
               ),
             ),
@@ -131,7 +139,7 @@ class _ProfilePageState extends State<ProfilePage> {
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           const CircleAvatar(radius: 50, child: Icon(Icons.person, size: 50)),
           const SizedBox(height: 10),
-          const Text("Login karke apna profile dekho"),
+          const Text("Login karke apna profile dekho", style: TextStyle(color: Colors.black)),
           const SizedBox(height: 10),
           ElevatedButton(onPressed: () => showDialog(context: context, builder: (_) => const LoginDialog()), child: const Text("Login"))
         ]),
@@ -150,7 +158,7 @@ class _ProfilePageState extends State<ProfilePage> {
               Positioned(bottom: 0, right: 0, child: GestureDetector(onTap: _switchAccountDialog, child: const CircleAvatar(radius: 12, backgroundColor: Colors.black, child: Icon(Icons.switch_account, size: 14, color: Colors.white))))
             ]),
             const SizedBox(height: 10),
-            Text(user.displayName?? "Yuopni User", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(user.displayName?? "Yuopni User", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
             Text(user.email?? "", style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 10),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -165,32 +173,32 @@ class _ProfilePageState extends State<ProfilePage> {
             Expanded(
               child: TabBarView(
                 children: [
+                  // FIX 2: createdAt use kiya, timestamp nahi
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).orderBy('timestamp', descending: true).limit(30).snapshots(),
+                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).orderBy('createdAt', descending: true).limit(30).snapshots(),
                     builder: (c, snap) {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                      if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi"));
+                      if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.black)));
                       return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: snap.data!.docs.length, itemBuilder: (_, i) {
                         var d = snap.data!.docs[i].data() as Map<String, dynamic>;
                         String url = (d['mediaUrl']?? d['imageUrl']?? '').toString();
-                        return CachedNetworkImage(imageUrl: url, fit: BoxFit.cover, placeholder: (_, __) => Container(color: Colors.black12), errorWidget: (_, __, ___) => const Icon(Icons.broken_image));
+                        return CachedNetworkImage(imageUrl: url, fit: BoxFit.cover);
                       });
                     },
                   ),
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('reels').where('uid', isEqualTo: user.uid).orderBy('timestamp', descending: true).limit(30).snapshots(),
+                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).where('isVideo', isEqualTo: true).orderBy('createdAt', descending: true).limit(30).snapshots(),
                     builder: (c, snap) {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                      if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Reel nahi"));
+                      if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Reel nahi", style: TextStyle(color: Colors.black)));
                       var reels = snap.data!.docs;
                       return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: reels.length, itemBuilder: (_, i) {
                         var d = reels[i].data() as Map<String, dynamic>;
-                        String thumb = (d['thumbnail']?? '').toString();
-                        bool isImageThumb = thumb.startsWith('http') &&!thumb.contains('.mp4');
+                        String thumb = (d['thumbnail']?? d['mediaUrl']?? '').toString();
                         return GestureDetector(
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: reels))),
                           child: Stack(fit: StackFit.expand, children: [
-                            isImageThumb? CachedNetworkImage(imageUrl: thumb, fit: BoxFit.cover, errorWidget: (_, __, ___) => Container(color: Colors.black)) : Container(color: Colors.black87, child: const Icon(Icons.videocam, color: Colors.white24, size: 40)),
+                            CachedNetworkImage(imageUrl: thumb, fit: BoxFit.cover),
                             Container(color: Colors.black26),
                             const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
                           ]),
