@@ -1,5 +1,4 @@
-// 1000 Songs - 500 Hindi + 500 Punjabi - No Bug Version
-
+// 1000 Songs with different preview urls
 const List<String> baseHindi100 = [
   "Tum Hi Ho", "Kesariya", "Gerua", "Raabta", "Channa Mereya",
   "Ae Dil Hai Mushkil", "Kabira", "Kal Ho Naa Ho", "Tum Se Hi", "Kun Faya Kun",
@@ -35,28 +34,29 @@ const List<String> basePunjabi100 = [
   "Dheere Dheere", "Ik Mili Mainu Apsraa", "Kala Joda", "Laal Pari", "Suit Patiala", "Jatt Zimidar", "Jatti", "Gaddi Pichhe Naa", "Jatti Di Clip", "Jhanjar Punjabi"
 ];
 
-// Yeh final 1000 list hai - bug free
-final List<String> allSongs1000 = [
-  ...List.generate(500, (i) {
-    String base = baseHindi100[i % baseHindi100.length];
-    int vol = i ~/ baseHindi100.length + 1;
-    return vol == 1 ? base : "$base $vol";
-  }),
-  ...List.generate(500, (i) {
-    String base = basePunjabi100[i % basePunjabi100.length];
-    int vol = i ~/ basePunjabi100.length + 1;
-    return vol == 1 ? base : "$base $vol";
-  }),
+// 16 alag-alag tunes taaki har song alag lage
+const List<String> demoTunes = [
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-9.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-11.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-12.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-13.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-14.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-15.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-16.mp3",
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-17.mp3",
 ];
 
-final List<String> hindiSongs500 = List.generate(500, (i) {
-  String base = baseHindi100[i % baseHindi100.length];
-  int vol = i ~/ baseHindi100.length + 1;
-  return vol == 1 ? base : "$base $vol";
-});
+final List<String> allSongs1000 = [
+ ...List.generate(500, (i) => i < 100? baseHindi100[i] : "${baseHindi100[i % 100]} ${i ~/ 100 + 1}"),
+ ...List.generate(500, (i) => i < 100? basePunjabi100[i] : "${basePunjabi100[i % 100]} ${i ~/ 100 + 1}"),
+];
 
-final List<String> punjabiSongs500 = List.generate(500, (i) {
-  String base = basePunjabi100[i % basePunjabi100.length];
-  int vol = i ~/ basePunjabi100.length + 1;
-  return vol == 1 ? base : "$base $vol";
-});
+String getSongUrl(int index) => demoTunes[index % demoTunes.length];
