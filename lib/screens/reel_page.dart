@@ -9,7 +9,6 @@ import 'package:http/http.dart' as http;
 
 class ReelPage extends StatefulWidget {
   final int initialIndex;
-  // FIX: QueryDocumentSnapshot ki jagah DocumentSnapshot lo - ye deep link ke liye sahi hai
   final List<DocumentSnapshot>? myReels;
   const ReelPage({super.key, this.initialIndex = 0, this.myReels});
 
@@ -29,7 +28,7 @@ class _ReelPageState extends State<ReelPage> {
           itemCount: widget.myReels!.length,
           itemBuilder: (c, i) {
             var doc = widget.myReels![i];
-            var data = doc.data() as Map<String, dynamic>??? {};
+            var data = (doc.data() as Map<String, dynamic>?)?? {};
             return ReelItem(
               docId: doc.id,
               data: data,
@@ -40,7 +39,6 @@ class _ReelPageState extends State<ReelPage> {
       );
     }
 
-    // Normal feed wala part same rahega
     return Scaffold(
       backgroundColor: Colors.black,
       body: StreamBuilder<QuerySnapshot>(
@@ -96,7 +94,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
 
     if (url.isNotEmpty && url.contains('http')) {
       _ctrl = VideoPlayerController.networkUrl(Uri.parse(url))
-     ..initialize().then((_) {
+    ..initialize().then((_) {
           if (mounted) {
             setState(() => _isInit = true);
             _ctrl!.setLooping(true);
@@ -179,7 +177,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
       child: Stack(fit: StackFit.expand, children: [
         _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 50))
         : _isInit && _ctrl!= null
-       ? GestureDetector(onTap: (){
+      ? GestureDetector(onTap: (){
               setState((){
                 if(_ctrl!.value.isPlaying){ _ctrl!.pause(); _songPlayer.pause(); }
                 else { _ctrl!.play(); _songPlayer.resume(); }
