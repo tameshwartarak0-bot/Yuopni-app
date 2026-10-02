@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Yuopni Reel</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:sans-serif}
+body{background:#000;color:#fff;min-height:100vh;display:flex}
+.l{flex:1;background:#000;display:flex;align-items:center;justify-content:center}
+.l video{max-width:100%;max-height:100vh}
+.r{width:360px;background:#121212;padding:20px;border-left:1px solid #222;display:flex;flex-direction:column}
+.av{width:44px;height:44px;border-radius:50%;background:linear-gradient(45deg,#feda75,#fa7e1e,#d62976);display:flex;align-items:center;justify-content:center;font-weight:bold}
+.btn{background:#ff2d55;color:#fff;padding:14px;border-radius:30px;text-align:center;text-decoration:none;font-weight:bold;margin-top:20px}
+@media(max-width:700px){body{flex-direction:column}.r{width:100%}}
+</style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+<div class="l"><video id="v" controls autoplay loop playsinline style="display:none"></video><p id="ld">Loading...</p></div>
+<div class="r">
+<h2>Yuopni 🔥</h2>
+<div style="display:flex;gap:10px;align-items:center;margin:15px 0"><div class="av" id="av">Y</div><b id="nm">Loading...</b></div>
+<p id="cp" style="font-size:14px;color:#ddd"></p>
+<p id="sg" style="font-size:12px;color:#aaa;margin-top:8px"></p>
+<a id="op" class="btn" href="#">Open in Yuopni App</a>
+</div>
+<script>
+const firebaseConfig={apiKey:"AIzaSyC4y5A6NsLXusKsYly7jGdo_AByDaPcKYM",authDomain:"yuopni-1c5e9.firebaseapp.com",projectId:"yuopni-1c5e9",storageBucket:"yuopni-1c5e9.firebasestorage.app",messagingSenderId:"628684774390",appId:"1:628684774390:web:68287fa81995805eea85d7"};
+firebase.initializeApp(firebaseConfig);const db=firebase.firestore();
+const vid=new URLSearchParams(location.search).get('id');
+async function load(){if(!vid){document.getElementById('ld').innerText="No ID";return;}try{const d=await db.collection('posts').doc(vid).get();if(!d.exists){document.getElementById('ld').innerText="Not Found";return;}const x=d.data();document.getElementById('nm').innerText=x.username||"Yuopni User";document.getElementById('av').innerText=(x.username||"Y")[0].toUpperCase();document.getElementById('cp').innerText=x.title||"";if(x.songName)document.getElementById('sg').innerText="🎵 "+x.songName;const v=document.getElementById('v');v.src=x.mediaUrl||x.videoUrl||"";document.getElementById('ld').style.display="none";v.style.display="block";v.play().catch(()=>{});}catch(e){document.getElementById('ld').innerText=e.message}}load();
+</script>
+</body>
+</html>
