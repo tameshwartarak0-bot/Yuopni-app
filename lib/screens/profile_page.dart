@@ -51,14 +51,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _logout() async {
     await _saveCurrentAccount();
-    // FIX 1: Proper logout
     await GoogleSignIn().signOut();
     await FirebaseAuth.instance.signOut();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('userEmail');
     await prefs.remove('userName');
     await prefs.remove('userPhoto');
-    // seenDemo ko rehne do, isLoggedIn ko hatao
     await prefs.remove('isLoggedIn');
 
     if (mounted) {
@@ -86,14 +84,14 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 10),
             ListTile(
               leading: CircleAvatar(backgroundImage: FirebaseAuth.instance.currentUser?.photoURL!= null? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!) : null),
-              title: Text(FirebaseAuth.instance.currentUser?.displayName?? "Current User", style: TextStyle(color: Colors.black)),
+              title: Text(FirebaseAuth.instance.currentUser?.displayName?? "Current User", style: const TextStyle(color: Colors.black)),
               subtitle: Text(FirebaseAuth.instance.currentUser?.email?? ""),
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-           ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+          ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
               leading: acc['photo']!= ""? CircleAvatar(backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(child: Text(acc['name'][0])),
-              title: Text(acc['name'], style: TextStyle(color: Colors.black)),
+              title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
               subtitle: Text(acc['email']),
               onTap: () async {
                 Navigator.pop(context);
@@ -131,6 +129,20 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  List<QueryDocumentSnapshot> _sortDocs(List<QueryDocumentSnapshot> docs){
+    docs.sort((a,b){
+      var da = (a.data() as Map<String,dynamic>);
+      var db = (b.data() as Map<String,dynamic>);
+      Timestamp? ta = da['createdAt'] is Timestamp? da['createdAt'] : da['timestamp'] is Timestamp? da['timestamp'] : null;
+      Timestamp? tb = db['createdAt'] is Timestamp? db['createdAt'] : db['timestamp'] is Timestamp? db['timestamp'] : null;
+      if(ta==null && tb==null) return 0;
+      if(ta==null) return 1;
+      if(tb==null) return -1;
+      return tb.compareTo(ta);
+    });
+    return docs;
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -164,7 +176,7 @@ class _ProfilePageState extends State<ProfilePage> {
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               ElevatedButton(onPressed: _switchAccountDialog, child: const Text("Switch Account")),
               const SizedBox(width: 10),
-              ElevatedButton(onPressed: _logout, style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), child: const Text("Logout")),
+              ElevatedButton(onPressed: _logout, style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), child: const Text("Logout", foregroundColor: Colors.white)),
             ]),
             const SizedBox(height: 5),
             Text("${savedAccounts.length} account saved", style: const TextStyle(fontSize: 11, color: Colors.grey)),
@@ -173,28 +185,41 @@ class _ProfilePageState extends State<ProfilePage> {
             Expanded(
               child: TabBarView(
                 children: [
-                  // FIX 2: createdAt use kiya, timestamp nahi
+                  // FIX: orderBy hata diya, ab koi field missing ho to bhi chalega
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).orderBy('createdAt', descending: true).limit(30).snapshots(),
+                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).snapshots(),
                     builder: (c, snap) {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator());
                       if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.black)));
-                      return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: snap.data!.docs.length, itemBuilder: (_, i) {
-                        var d = snap.data!.docs[i].data() as Map<String, dynamic>;
-                        String url = (d['mediaUrl']?? d['imageUrl']?? '').toString();
-                        return CachedNetworkImage(imageUrl: url, fit: BoxFit.cover);
+                      var docs = _sortDocs(snap.data!.docs);
+                      return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: docs.length, itemBuilder: (_, i) {
+                        var d = docs[i].data() as Map<String, dynamic>;
+                        String url = (d['mediaUrl']?? d['imageUrl']?? d['videoUrl']?? '').toString();
+                        bool isVideo = d['isVideo']==true || url.contains('.mp4');
+                        return GestureDetector(
+                          onTap: isVideo? () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: docs.where((e) => (e.data() as Map)['isVideo']==true || (e.data() as Map)['mediaUrl'].toString().contains('.mp4')).toList()))) : null,
+                          child: Stack(fit: StackFit.expand, children: [
+                            CachedNetworkImage(imageUrl: url, fit: BoxFit.cover),
+                            if(isVideo) const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
+                          ]),
+                        );
                       });
                     },
                   ),
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).where('isVideo', isEqualTo: true).orderBy('createdAt', descending: true).limit(30).snapshots(),
+                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).snapshots(),
                     builder: (c, snap) {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                      if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Reel nahi", style: TextStyle(color: Colors.black)));
-                      var reels = snap.data!.docs;
+                      var all = _sortDocs(snap.data!.docs);
+                      var reels = all.where((doc){
+                        var d = doc.data() as Map<String,dynamic>;
+                        var url = (d['mediaUrl']?? d['videoUrl']?? '').toString();
+                        return d['isVideo']==true || url.toLowerCase().contains('.mp4');
+                      }).toList();
+                      if (reels.isEmpty) return const Center(child: Text("Abhi koi Reel nahi", style: TextStyle(color: Colors.black)));
                       return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: reels.length, itemBuilder: (_, i) {
                         var d = reels[i].data() as Map<String, dynamic>;
-                        String thumb = (d['thumbnail']?? d['mediaUrl']?? '').toString();
+                        String thumb = (d['thumbnail']?? d['mediaUrl']?? d['videoUrl']?? '').toString();
                         return GestureDetector(
                           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: reels))),
                           child: Stack(fit: StackFit.expand, children: [
