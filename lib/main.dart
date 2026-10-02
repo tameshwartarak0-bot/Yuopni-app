@@ -8,7 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'screens/demo_page.dart';
 import 'screens/main_screen.dart';
 import 'screens/login_page.dart';
-import 'reel_page.dart'; // Tumhari ReelPage file ka naam
+import 'screens/reel_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,7 +19,6 @@ void main() async {
   );
   final prefs = await SharedPreferences.getInstance();
   bool seenDemo = prefs.getBool('seenDemo')?? false;
-
   runApp(YuopniApp(seenDemo: seenDemo));
 }
 
@@ -50,16 +49,10 @@ class _YuopniAppState extends State<YuopniApp> {
   }
 
   void _handleLink(Uri uri) async {
-    // ✅ FIXED - Tumhara asli domain check
-    // https://yuopni-1c5e9.web.app/video?id=XYZ
-    // yuopni://video?id=XYZ
-    // https://yuopni-1c5e9.firebaseapp.com/video?id=XYZ
     bool isOurLink = uri.host.contains("yuopni-1c5e9") || uri.scheme == "yuopni";
-
     if (isOurLink) {
       String? videoId = uri.queryParameters['id'];
       if (videoId!= null && videoId.isNotEmpty) {
-        // Thoda wait karo taaki MainScreen load ho jaye
         await Future.delayed(const Duration(milliseconds: 800));
         try {
           var doc = await FirebaseFirestore.instance.collection('posts').doc(videoId).get();
@@ -84,20 +77,20 @@ class _YuopniAppState extends State<YuopniApp> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
       home:!widget.seenDemo
-       ? DemoPage()
-        : StreamBuilder<fb_auth.User?>(
-            stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.white)));
-              }
-              if (snapshot.hasData && snapshot.data!= null) {
-                return MainScreen();
-              } else {
-                return LoginPage();
-              }
-            },
-          ),
+         ? DemoPage()
+          : StreamBuilder<fb_auth.User?>(
+              stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.white)));
+                }
+                if (snapshot.hasData && snapshot.data!= null) {
+                  return MainScreen();
+                } else {
+                  return LoginPage();
+                }
+              },
+            ),
     );
   }
 }
