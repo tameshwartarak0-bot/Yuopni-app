@@ -89,7 +89,7 @@ class _ProfilePageState extends State<ProfilePage> {
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-          ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+         ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
               leading: acc['photo']!= ""? CircleAvatar(backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(child: Text(acc['name'][0])),
               title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
               subtitle: Text(acc['email']),
@@ -176,7 +176,11 @@ class _ProfilePageState extends State<ProfilePage> {
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               ElevatedButton(onPressed: _switchAccountDialog, child: const Text("Switch Account")),
               const SizedBox(width: 10),
-              ElevatedButton(onPressed: _logout, style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), child: const Text("Logout", foregroundColor: Colors.white)),
+              ElevatedButton(
+                onPressed: _logout,
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
+                child: const Text("Logout")
+              ),
             ]),
             const SizedBox(height: 5),
             Text("${savedAccounts.length} account saved", style: const TextStyle(fontSize: 11, color: Colors.grey)),
@@ -185,7 +189,6 @@ class _ProfilePageState extends State<ProfilePage> {
             Expanded(
               child: TabBarView(
                 children: [
-                  // FIX: orderBy hata diya, ab koi field missing ho to bhi chalega
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).snapshots(),
                     builder: (c, snap) {
