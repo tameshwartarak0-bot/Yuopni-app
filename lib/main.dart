@@ -59,7 +59,7 @@ class _YuopniAppState extends State<YuopniApp> {
           if (doc.exists && _navigatorKey.currentState!= null) {
             _navigatorKey.currentState!.push(
               MaterialPageRoute(
-                builder: (_) => ReelPage(myReels: [doc], initialIndex: 0),
+                builder: (_) => ReelPage(myReels: [doc as dynamic], initialIndex: 0),
               ),
             );
           }
@@ -77,7 +77,7 @@ class _YuopniAppState extends State<YuopniApp> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
       home:!widget.seenDemo
-         ? DemoPage()
+        ? DemoPage()
           : StreamBuilder<fb_auth.User?>(
               stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
               builder: (context, snapshot) {
