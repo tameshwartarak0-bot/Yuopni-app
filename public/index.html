@@ -2,40 +2,37 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>Yuopni - Watch Reel</title>
 <style>
-*{margin:0;padding:0;box-sizing:border-box;font-family: -apple-system, BlinkMacSystemFont, sans-serif}
-body{background:#000;color:#fff;height:100vh;display:flex}
-.left{flex:1;background:#000;display:flex;align-items:center;justify-content:center;position:relative}
-.left video{max-height:100vh;max-width:100%;background:#000}
-.right{width:380px;background:#121212;padding:24px;display:flex;flex-direction:column;border-left:1px solid #222}
-.logo{font-size:28px;font-weight:800;margin-bottom:24px}
-.user{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-.av{width:44px;height:44px;background:linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf,#4f5bd5);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:18px}
-.title{font-size:15px;line-height:1.4;margin-bottom:8px}
-.song{font-size:13px;color:#aaa;margin-bottom:20px;display:flex;align-items:center;gap:6px}
-.btn{background:#ff3a5e;color:#fff;padding:14px;border-radius:30px;text-align:center;text-decoration:none;font-weight:700;margin-top:auto}
-.small{color:#666;font-size:12px;text-align:center;margin-top:14px;text-decoration:none;display:block}
-#loader{position:absolute}
-@media(max-width:800px){body{flex-direction:column}.right{width:100%;border-left:none}.left video{max-height:60vh}}
+*{margin:0;padding:0;box-sizing:border-box;font-family:sans-serif}
+body{background:#000;color:#fff;min-height:100vh;display:flex;flex-direction:column}
+.wrap{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:row}
+.left{flex:1;display:flex;align-items:center;justify-content:center;background:#000;min-height:60vh}
+.left video{width:auto;max-width:100%;max-height:90vh;background:#000}
+.right{width:380px;background:#121212;padding:20px;border-left:1px solid #222;display:flex;flex-direction:column}
+@media(max-width:800px){.wrap{flex-direction:column}.right{width:100%;border:none}.left{min-height:50vh}}
+.user{display:flex;gap:10px;align-items:center;margin:15px 0}
+.av{width:42px;height:42px;border-radius:50%;background:linear-gradient(45deg,#feda75,#fa7e1e,#d62976,#962fbf);display:flex;align-items:center;justify-content:center;font-weight:bold}
+.btn{background:#ff2d55;color:#fff;padding:14px;border-radius:30px;text-align:center;text-decoration:none;font-weight:bold;margin-top:20px}
 </style>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
+<div class="wrap">
 <div class="left">
-<p id="loader">Loading Reel...</p>
-<video id="reelVideo" controls autoplay loop playsinline style="display:none"></video>
+<video id="v" controls autoplay loop playsinline style="display:none"></video>
+<p id="load">Loading Yuopni Reel...</p>
 </div>
 <div class="right">
-<div class="logo">Yuopni 🔥</div>
-<div class="user"><div class="av" id="av">Y</div><div><b id="username">Loading...</b><div style="font-size:12px;color:#888">Yuopni User</div></div></div>
-<div class="title" id="caption"></div>
-<div class="song" id="song"></div>
-<a class="btn" id="openApp" href="#">Open in Yuopni App</a>
-<a class="small" href="https://play.google.com">Get Yuopni App</a>
-<p class="small" id="vid"></p>
+<h1>Yuopni 🔥</h1>
+<div class="user"><div class="av" id="av">Y</div><div><b id="name">Loading...</b><div style="font-size:12px;color:#888">Yuopni User</div></div></div>
+<p id="cap" style="font-size:14px;color:#ddd"></p>
+<p id="song" style="font-size:12px;color:#aaa;margin-top:10px"></p>
+<a id="openBtn" class="btn" href="#">Open in Yuopni App</a>
+<p id="vid" style="font-size:10px;color:#444;margin-top:15px;word-break:break-all"></p>
+</div>
 </div>
 <script>
 const firebaseConfig = {
@@ -49,24 +46,24 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const id = new URLSearchParams(location.search).get('id');
-document.getElementById('vid').innerText = id? "ID: "+id : "";
-document.getElementById('openApp').href = "https://yuopni-1c5e9.web.app/video?id="+(id||'');
-async function load(){
- if(!id){document.getElementById('loader').innerText="Welcome to Yuopni";document.getElementById('username').innerText="Yuopni";return;}
+document.getElementById('vid').innerText = id? "ID: "+id : "No ID";
+document.getElementById('openBtn').href = "intent://yuopni-1c5e9.web.app/video?id="+(id||'')+"#Intent;scheme=https;package=com.yuopni.yuopni;S.browser_fallback_url=https://play.google.com/store;end";
+async function run(){
+ if(!id){document.getElementById('load').innerText="Welcome to Yuopni";return;}
  try{
   const doc = await db.collection('posts').doc(id).get();
-  if(!doc.exists){document.getElementById('loader').innerText="Reel not found";return;}
+  if(!doc.exists){document.getElementById('load').innerText="Reel not found";return;}
   const d = doc.data();
-  document.getElementById('username').innerText = d.username||"Yuopni User";
-  document.getElementById('av').innerText = (d.username||'Y')[0].toUpperCase();
-  document.getElementById('caption').innerText = d.title||d.caption||"";
-  if(d.songName&&d.songName!='No Song'){document.getElementById('song').innerHTML="🎵 "+d.songName;}
-  const url = d.mediaUrl||d.videoUrl||d.imageUrl;
-  const v = document.getElementById('reelVideo');
-  v.src = url; v.style.display="block"; document.getElementById('loader').style.display="none"; v.play();
- }catch(e){document.getElementById('loader').innerText="Error: "+e.message;}
+  document.getElementById('name').innerText = d.username||"Yuopni User";
+  document.getElementById('av').innerText = (d.username||"Y")[0].toUpperCase();
+  document.getElementById('cap').innerText = d.title||d.caption||"";
+  if(d.songName) document.getElementById('song').innerText="🎵 "+d.songName;
+  const url = d.mediaUrl||d.videoUrl||"";
+  const video = document.getElementById('v');
+  video.src = url; video.style.display="block"; document.getElementById('load').style.display="none"; video.play().catch(()=>{});
+ }catch(e){document.getElementById('load').innerText="Error: "+e.message}
 }
-load();
+run();
 </script>
 </body>
 </html>
