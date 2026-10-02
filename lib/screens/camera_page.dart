@@ -7,6 +7,7 @@ import 'package:video_player/video_player.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'upload_page.dart';
+import '../data/songs_data.dart'; // 1000 songs
 
 class CameraPage extends StatefulWidget {
   const CameraPage({super.key});
@@ -20,22 +21,12 @@ class _CameraPageState extends State<CameraPage> {
   String _mode="Reel";
   Timer? _timer; int _sec=0;
   String _song="No Song";
-  double _songStart=0; // song ka kaunsa second se start
-  AudioPlayer _audio = AudioPlayer();
+  double _songStart=0;
+  final AudioPlayer _audio = AudioPlayer();
   bool _songPlaying=false;
   VideoPlayerController? _vCtrl;
+  String _search = "";
 
-  final _songs = [
-    "Kalaastar - Honey Singh","Chaleya - Jawan","Heeriye - Arijit",
-    "Mahiye Jinna Sohna","Apna Bana Le - Bhediya","Tum Kya Mile - Rocky",
-    "Kesariya - Brahmastra","Besharam Rang - Pathaan","Chaiyya Chaiyya",
-    "Senorita - ZNMD","Satranga - Animal","Pehle Bhi Main - Animal",
-    "Arjan Vailly - Animal","Lutt Putt Gaya - Dunki","O Maahi - Dunki",
-    "Saudebazi - Aakrosh","Tum Se Hi - Jab We Met","Gerua - Dilwale",
-    "Malang - Dhoom3","Brown Rang - Honey Singh"
-  ];
-
-  // Demo ke liye same mp3 link - baad me tum apna server lagana
   final String demoAudioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
 
   @override void initState(){ super.initState(); _initCamOnce(); }
@@ -53,7 +44,7 @@ class _CameraPageState extends State<CameraPage> {
     }
   }
 
-  void _startTimer(){ _sec=0; _timer=Timer.periodic(Duration(seconds:1),(_)=>setState(()=>_sec++)); }
+  void _startTimer(){ _sec=0; _timer=Timer.periodic(const Duration(seconds:1),(_)=>setState(()=>_sec++)); }
   void _stopTimer()=>_timer?.cancel();
   String _fmt(int s)=> "${s~/60}:${(s%60).toString().padLeft(2,'0')}";
 
@@ -72,7 +63,6 @@ class _CameraPageState extends State<CameraPage> {
     _vCtrl?.dispose();
     _vCtrl=VideoPlayerController.file(File(_file!.path))..initialize().then((_)=>setState((){
       _vCtrl!.setLooping(true); _vCtrl!.play();
-      // Agar song selected hai to video ke saath song bhi bajao
       if(_song!="No Song") _playSongWithVideo();
     }));
   }
@@ -91,67 +81,78 @@ class _CameraPageState extends State<CameraPage> {
     }
     final p=ImagePicker();
     XFile? f = _mode!="Story"
-     ? await p.pickVideo(source: ImageSource.gallery, maxDuration: Duration(minutes: _mode=="Video"?90:15))
+    ? await p.pickVideo(source: ImageSource.gallery, maxDuration: Duration(minutes: _mode=="Video"?90:15))
       : await p.pickImage(source: ImageSource.gallery);
     if(f!=null){ setState(()=>_file=f); if(f.path.endsWith(".mp4")) _preview(); }
   }
 
   void _pickSong(){
+    List<String> filtered = _search.isEmpty
+     ? allSongs1000
+      : allSongs1000.where((s) => s.toLowerCase().contains(_search.toLowerCase())).toList();
+
     showModalBottomSheet(
       context: context,
-      backgroundColor: Color(0xFF111111),
+      backgroundColor: const Color(0xFF111111),
       isScrollControlled: true,
-      builder: (_)=> DraggableScrollableSheet(
+      builder: (_)=> StatefulBuilder(
+        builder: (context, setModal) => DraggableScrollableSheet(
         initialChildSize: 0.7,
         maxChildSize: 0.9,
         expand: false,
         builder: (context, scroll) => Container(
-          padding: EdgeInsets.all(12),
+          padding: const EdgeInsets.all(12),
           child: Column(
             children:[
               Container(width:40,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(10))),
-              SizedBox(height:10),
-              Text("Song Add Karo - Tap karke suno", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-              SizedBox(height:10),
-              // Trim slider
+              const SizedBox(height:10),
+              Text("1000 Songs - ${filtered.length} Found", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+              const SizedBox(height:10),
+              TextField(
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(hintText: "Search Hindi / Punjabi...", hintStyle: const TextStyle(color: Colors.white54), prefixIcon: const Icon(Icons.search, color: Colors.white54), filled: true, fillColor: Colors.white10, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                onChanged: (v){ setModal((){ _search=v; filtered = v.isEmpty? allSongs1000 : allSongs1000.where((s) => s.toLowerCase().contains(v.toLowerCase())).toList(); }); },
+              ),
+              const SizedBox(height:10),
               if(_song!="No Song") Container(
-                padding: EdgeInsets.all(10),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(10)),
                 child: Column(
                   children:[
-                    Row(children:[Icon(Icons.music_note,color:Colors.pink), SizedBox(width:8), Expanded(child:Text(_song,style:TextStyle(color:Colors.white,fontWeight:FontWeight.bold))), Text("${_songStart.toInt()}s se", style:TextStyle(color:Colors.pink))]),
-                    Slider(value: _songStart, min:0, max:60, divisions:60, activeColor: Colors.pink, onChanged: (v){ setState(()=>_songStart=v); _audio.seek(Duration(seconds: v.toInt())); }),
-                    Text("Video ke hisab se song ka part select karo (0-60 sec)", style: TextStyle(color: Colors.white54, fontSize: 12))
+                    Row(children:[const Icon(Icons.music_note,color:Colors.pink), const SizedBox(width:8), Expanded(child:Text(_song,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.bold))), Text("${_songStart.toInt()}s se", style:const TextStyle(color:Colors.pink))]),
+                    Slider(value: _songStart, min:0, max:60, divisions:60, activeColor: Colors.pink, onChanged: (v){ setState(()=>_songStart=v); setModal(()=>_songStart=v); _audio.seek(Duration(seconds: v.toInt())); }),
+                    const Text("Video ke hisab se song ka part select karo (0-60 sec)", style: TextStyle(color: Colors.white54, fontSize: 12))
                   ],
                 ),
               ),
-              SizedBox(height:10),
+              const SizedBox(height:10),
               Expanded(child: ListView.builder(
                 controller: scroll,
-                itemCount: _songs.length,
+                itemCount: filtered.length,
                 itemBuilder: (_,i){
-                  bool selected = _song==_songs[i];
+                  bool selected = _song==filtered[i];
                   return ListTile(
                     leading: Icon(Icons.music_note, color: selected?Colors.pink:Colors.white54),
-                    title: Text(_songs[i], style: TextStyle(color: selected?Colors.pink:Colors.white)),
-                    subtitle: Text("Tap to preview", style: TextStyle(color: Colors.white38, fontSize: 11)),
+                    title: Text(filtered[i], style: TextStyle(color: selected?Colors.pink:Colors.white)),
+                    subtitle: const Text("Tap to preview", style: TextStyle(color: Colors.white38, fontSize: 11)),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children:[
                       IconButton(icon: Icon(_songPlaying && selected? Icons.pause:Icons.play_arrow, color: Colors.white), onPressed: () async {
                         if(_songPlaying && selected){
-                          await _audio.pause(); setState(()=>_songPlaying=false);
+                          await _audio.pause(); setState(()=>_songPlaying=false); setModal(()=>_songPlaying=false);
                         }else{
-                          setState(()=>_song=_songs[i]);
+                          setState(()=>_song=filtered[i]); setModal(()=>_song=filtered[i]);
                           await _audio.play(UrlSource(demoAudioUrl));
-                          setState(()=>_songPlaying=true);
+                          setState(()=>_songPlaying=true); setModal(()=>_songPlaying=true);
                         }
                       }),
-                      ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: selected?Colors.green:Colors.pink), onPressed: (){ setState(()=>_song=_songs[i]); Navigator.pop(context); if(_file!=null) _playSongWithVideo(); }, child: Text(selected?"Using":"Use")),
+                      ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: selected?Colors.green:Colors.pink), onPressed: (){ setState(()=>_song=filtered[i]); Navigator.pop(context); if(_file!=null) _playSongWithVideo(); }, child: Text(selected?"Using":"Use")),
                     ]),
                   );
                 }
               )),
             ]
           ),
+        ),
         ),
       ),
     );
@@ -163,28 +164,28 @@ class _CameraPageState extends State<CameraPage> {
     if(_file!=null){
       return Scaffold(
         backgroundColor: Colors.black,
-        appBar: AppBar(backgroundColor: Colors.black, title: Text("${_vCtrl!=null?_fmt(_vCtrl!.value.position.inSeconds):_fmt(_sec)} - $_song")),
+        appBar: AppBar(backgroundColor: Colors.black, title: Text("${_vCtrl!=null?_fmt(_vCtrl!.value.position.inSeconds):_fmt(_sec)} - $_song", style: const TextStyle(fontSize: 14))),
         body: Column(children:[
           Expanded(child: _file!.path.endsWith(".mp4")? (_vCtrl?.value.isInitialized==true? Stack(children:[
             VideoPlayer(_vCtrl!),
             Positioned(bottom:10,left:10,right:10,child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children:[
-              Container(padding: EdgeInsets.symmetric(horizontal:8,vertical:4),decoration:BoxDecoration(color: Colors.black54,borderRadius:BorderRadius.circular(10)), child: Text("${_fmt(_vCtrl!.value.position.inSeconds)} / ${_fmt(_vCtrl!.value.duration.inSeconds)}", style: TextStyle(color: Colors.white))),
-              Container(padding: EdgeInsets.symmetric(horizontal:8,vertical:4),decoration:BoxDecoration(color: Colors.pink,borderRadius:BorderRadius.circular(10)), child: Row(children:[Icon(Icons.music_note,size:14,color:Colors.white), SizedBox(width:4), Text(_song, style: TextStyle(color: Colors.white,fontSize:11))])),
+              Container(padding: const EdgeInsets.symmetric(horizontal:8,vertical:4),decoration:BoxDecoration(color: Colors.black54,borderRadius:BorderRadius.circular(10)), child: Text("${_fmt(_vCtrl!.value.position.inSeconds)} / ${_fmt(_vCtrl!.value.duration.inSeconds)}", style: const TextStyle(color: Colors.white))),
+              Container(padding: const EdgeInsets.symmetric(horizontal:8,vertical:4),decoration:BoxDecoration(color: Colors.pink,borderRadius:BorderRadius.circular(10)), child: Row(children:[const Icon(Icons.music_note,size:14,color:Colors.white), const SizedBox(width:4), Flexible(child: Text(_song, style: const TextStyle(color: Colors.white,fontSize:11), overflow: TextOverflow.ellipsis))])),
             ]))
-          ]) : Center(child: CircularProgressIndicator())) : Image.file(File(_file!.path), fit: BoxFit.contain)),
-          Container(padding: EdgeInsets.all(12), color: Color(0xFF1A1A1A), child: Row(children:[
-            Icon(Icons.music_note,color:Colors.pink), SizedBox(width:8),
-            Expanded(child: Text("$_song (${_songStart.toInt()}s se)", style: TextStyle(color: Colors.white), overflow: TextOverflow.ellipsis)),
-            ElevatedButton(onPressed: _pickSong, style: ElevatedButton.styleFrom(backgroundColor: Colors.pink), child: Text("Change Song")),
+          ]) : const Center(child: CircularProgressIndicator())) : Image.file(File(_file!.path), fit: BoxFit.contain)),
+          Container(padding: const EdgeInsets.all(12), color: const Color(0xFF1A1A1A), child: Row(children:[
+            const Icon(Icons.music_note,color:Colors.pink), const SizedBox(width:8),
+            Expanded(child: Text("$_song (${_songStart.toInt()}s se)", style: const TextStyle(color: Colors.white), overflow: TextOverflow.ellipsis)),
+            ElevatedButton(onPressed: _pickSong, style: ElevatedButton.styleFrom(backgroundColor: Colors.pink), child: const Text("Change Song")),
             IconButton(onPressed: (){ if(_vCtrl!.value.isPlaying){ _vCtrl!.pause(); _audio.pause(); } else { _vCtrl!.play(); if(_song!="No Song") _audio.resume(); } setState((){}); }, icon: Icon(_vCtrl?.value.isPlaying==true?Icons.pause:Icons.play_arrow, color: Colors.white))
           ])),
-          Padding(padding: EdgeInsets.all(16), child: Row(children:[
-            Expanded(child: OutlinedButton(onPressed: (){ _vCtrl?.dispose(); _audio.stop(); setState(()=>_file=null); }, child: Text("Retake", style: TextStyle(color: Colors.white)))),
-            SizedBox(width:12),
+          Padding(padding: const EdgeInsets.all(16), child: Row(children:[
+            Expanded(child: OutlinedButton(onPressed: (){ _vCtrl?.dispose(); _audio.stop(); setState(()=>_file=null); }, child: const Text("Retake", style: TextStyle(color: Colors.white)))),
+            const SizedBox(width:12),
             Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green), onPressed: (){
               _audio.stop();
               Navigator.pushReplacement(context, MaterialPageRoute(builder: (_)=> UploadPage(prefile: File(_file!.path), isVideo: true, isLong: _mode=="Video", songName: "$_song @${_songStart.toInt()}s")));
-            }, child: Text("Next - Test OK"))),
+            }, child: const Text("Next - Test OK"))),
           ]))
         ]),
       );
@@ -192,14 +193,14 @@ class _CameraPageState extends State<CameraPage> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, title: Text("Create $_mode"), actions: [Center(child: Text(_isRec?"🔴 ${_fmt(_sec)} / ${_mode=="Video"?"90:00":"15:00"}":_song, style: TextStyle(color: Colors.pink))), IconButton(icon: Icon(Icons.music_note), onPressed: _pickSong)]),
+      appBar: AppBar(backgroundColor: Colors.black, title: Text("Create $_mode"), actions: [Center(child: Padding(padding: const EdgeInsets.only(right: 8), child: Text(_isRec?"🔴 ${_fmt(_sec)} / ${_mode=="Video"?"90:00":"15:00"}":_song, style: const TextStyle(color: Colors.pink, fontSize: 12), overflow: TextOverflow.ellipsis))), IconButton(icon: const Icon(Icons.music_note), onPressed: _pickSong)]),
       body: Stack(children:[
-        _init? CameraPreview(_cam!) : Center(child: CircularProgressIndicator()),
-        Positioned(top:15,left:0,right:0,child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: ["Reel","Video","Story"].map((e)=> GestureDetector(onTap: ()=>setState(()=>_mode=e), child: Container(padding: EdgeInsets.symmetric(horizontal:18,vertical:8), decoration: BoxDecoration(color: _mode==e?Colors.white:Colors.white24, borderRadius: BorderRadius.circular(8)), child: Text(e, style: TextStyle(color: _mode==e?Colors.black:Colors.white, fontWeight: FontWeight.bold))))).toList())),
+        _init? CameraPreview(_cam!) : const Center(child: CircularProgressIndicator()),
+        Positioned(top:15,left:0,right:0,child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: ["Reel","Video","Story"].map((e)=> GestureDetector(onTap: ()=>setState(()=>_mode=e), child: Container(padding: const EdgeInsets.symmetric(horizontal:18,vertical:8), decoration: BoxDecoration(color: _mode==e?Colors.white:Colors.white24, borderRadius: BorderRadius.circular(8)), child: Text(e, style: TextStyle(color: _mode==e?Colors.black:Colors.white, fontWeight: FontWeight.bold))))).toList())),
         Positioned(bottom:25,left:0,right:0,child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children:[
-          GestureDetector(onTap: _pickGallery, child: Column(children:[Icon(Icons.photo_library, color: Colors.white, size:30), Text("Gallery", style: TextStyle(color: Colors.white))])),
-          GestureDetector(onLongPress: _mode!="Story"?_toggleRec:null, onTap: _mode=="Story"? () async { final f=await _cam!.takePicture(); setState(()=>_file=f); } : _toggleRec, child: Container(padding: EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: _isRec?Colors.red:Colors.white, width:4)), child: Container(padding: EdgeInsets.all(28), decoration: BoxDecoration(color: _isRec?Colors.red:Colors.white, shape: BoxShape.circle), child: Icon(_mode=="Story"?Icons.camera_alt:Icons.videocam, size:32)))),
-          GestureDetector(onTap: _pickSong, child: Column(children:[Icon(Icons.face_retouching_natural, size:30, color: Colors.pinkAccent), Text("Song", style: TextStyle(color: Colors.white))])),
+          GestureDetector(onTap: _pickGallery, child: const Column(children:[Icon(Icons.photo_library, color: Colors.white, size:30), Text("Gallery", style: TextStyle(color: Colors.white))])),
+          GestureDetector(onLongPress: _mode!="Story"?_toggleRec:null, onTap: _mode=="Story"? () async { final f=await _cam!.takePicture(); setState(()=>_file=f); } : _toggleRec, child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: _isRec?Colors.red:Colors.white, width:4)), child: Container(padding: const EdgeInsets.all(28), decoration: BoxDecoration(color: _isRec?Colors.red:Colors.white, shape: BoxShape.circle), child: Icon(_mode=="Story"?Icons.camera_alt:Icons.videocam, size:32))))),
+          GestureDetector(onTap: _pickSong, child: const Column(children:[Icon(Icons.face_retouching_natural, size:30, color: Colors.pinkAccent), Text("Song (1000)", style: TextStyle(color: Colors.white))])),
         ]))
       ]),
     );
