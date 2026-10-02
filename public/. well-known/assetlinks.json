@@ -1,1 +1,8 @@
-t
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.yuopni.app",
+    "sha256_cert_fingerprints": ["5A:DD:75:A8:07:C8:B8:3C:F4:BF:37:FA:67:B5:FD:3F:E9:CE:73:CB:76:57:0E:78:5B:57:8C:CB:CF:5C:46:FA"]
+  }
+}]
