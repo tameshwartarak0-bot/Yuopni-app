@@ -48,25 +48,39 @@ class _YuopniAppState extends State<YuopniApp> {
     _appLinks.uriLinkStream.listen((uri) => _handleLink(uri));
   }
 
+  // --- YAHI MAIN FIX HAI ---
   void _handleLink(Uri uri) async {
     bool isOurLink = uri.host.contains("yuopni-1c5e9") || uri.scheme == "yuopni";
-    if (isOurLink) {
-      String? videoId = uri.queryParameters['id'];
-      if (videoId!= null && videoId.isNotEmpty) {
-        await Future.delayed(const Duration(milliseconds: 800));
-        try {
-          var doc = await FirebaseFirestore.instance.collection('posts').doc(videoId).get();
-          if (doc.exists && _navigatorKey.currentState!= null) {
-            _navigatorKey.currentState!.push(
-              MaterialPageRoute(
-                builder: (_) => ReelPage(myReels: [doc as dynamic], initialIndex: 0),
-              ),
-            );
-          }
-        } catch (e) {
-          debugPrint("DeepLink error: $e");
-        }
+    if (!isOurLink) return;
+
+    String? videoId = uri.queryParameters['id']?.trim();
+    if (videoId == null || videoId.isEmpty) return;
+
+    // Navigator ready hone ka wait - grey screen fix
+    for (int i = 0; i < 20; i++) {
+      if (_navigatorKey.currentState!= null) break;
+      await Future.delayed(const Duration(milliseconds: 300));
+    }
+
+    try {
+      debugPrint("Yuopni Link Opened: $videoId");
+      var doc = await FirebaseFirestore.instance.collection('posts').doc(videoId).get();
+
+      if (!doc.exists || doc.data() == null) {
+        debugPrint("Post not found in Firestore: $videoId");
+        return;
       }
+
+      if (_navigatorKey.currentState!= null) {
+        _navigatorKey.currentState!.push(
+          MaterialPageRoute(
+            // FIX: 'as dynamic' hata diya, seedha doc bhejo
+            builder: (_) => ReelPage(myReels: [doc], initialIndex: 0),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("DeepLink error: $e");
     }
   }
 
@@ -77,7 +91,7 @@ class _YuopniAppState extends State<YuopniApp> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
       home:!widget.seenDemo
-        ? DemoPage()
+         ? DemoPage()
           : StreamBuilder<fb_auth.User?>(
               stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
               builder: (context, snapshot) {
