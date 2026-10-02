@@ -12,7 +12,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../global.dart';
 
-const List<String> allSongs1000 = [
+// FIX: const ki jagah final - ab build hoga
+final List<String> allSongs1000 = [
 "Tum Hi Ho","Kesariya","Gerua","Raabta","Channa Mereya","Ae Dil Hai Mushkil","Kabira","Kal Ho Naa Ho","Tum Se Hi","Kun Faya Kun","Chaiyya Chaiyya","Senorita","Badtameez Dil","Kala Chashma","Nashe Si Chadh Gayi","Balam Pichkari","Ghagra","Ainvayi Ainvayi","Subah Hone Na De","Bol Do Na Zara","Samjhawan","Sanam Re","Lo Safar","Phir Bhi Tumko Chaahunga","Zaalima","Humsafar","Tera Ban Jaunga","Bekhayali","Dil Diyan Gallan","Malang","Shayad","Khairiyat","Tujhe Kitna Chahne Lage","Baarish","Vaaste","Filhaal","Leja Re","Dil Mein Ho Tum","Pachtaoge","Tera Yaar Hoon Main","Ghungroo","Malhari","Deva Shree Ganesha","Aankh Marey","Dilbar","O Saki Saki","Garmi","Muqabla","Param Sundari","Chaka Chak","Nagada Sang Dhol","Dholida","Bole Chudiyan","Mehendi Laga Ke Rakhna","Tujh Mein Rab Dikhta Hai","Maahi Ve","Sajdaa","Masakali","Saddi Gali","Sawaar Loon","Radha","Manwa Laage","Deewani Mastani","Pinga","Mohe Rang Do Laal","Ghoomar","Pal Pal Dil Ke Paas","Pehla Nasha","Ek Pal Ka Jeena","Kaho Naa Pyaar Hai","Mitwa","Suraj Hua Maddham","Lungi Dance","Jhoome Jo Pathaan","Chaleya","Zinda Banda","What Jhumka","O Maahi","Heeriye","Mahiye Jinna Sohna","Maan Meri Jaan","Manike","Ranjha","Raatan Lambiyan","Rait Zara Si","Srivalli","Oo Antava","Saami Saami","Dhol Bajaa","Apna Bana Le","Makhna","Laung Laachi","Morni Banke","Bom Diggy","High Rated Gabru","Patola","Lahore","Naah","Prada","Brown Munde","295","Excuses","Levels","Insane","Same Beef","GOAT","Legend","Old Skool","Patiala Peg","Do You Know","Khat","Qismat","Mann Bharya","Lehenga","Butterfly","Horn Blow","Sakhiyan","Coka","Titliaan","Bijlee Bijlee","Bachke Bachke","Na Ji Na","Chauffeur","Waalian","Chandra","Kina Chir","Badnam","Daru Badnaam","Yaar Mod Do","Koka","Gulab","Kalaastar","Chorni",
 ...List.generate(900, (i) => "Hindi Hit ${i+101}")
 ];
@@ -111,7 +112,7 @@ class _UploadPageState extends State<UploadPage> {
           child: Column(children: [
             Container(width:40,height:5,decoration: BoxDecoration(color: Colors.grey[700], borderRadius: BorderRadius.circular(10))),
             const SizedBox(height: 12),
-            TextField(style: const TextStyle(color: Colors.white), autofocus: false, decoration: InputDecoration(prefixIcon: const Icon(Icons.search, color: Colors.white54), hintText: "1000 songs me search...", hintStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: Colors.white10, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), onChanged: (v){ setM(()=> search=v); }),
+            TextField(style: const TextStyle(color: Colors.white), decoration: InputDecoration(prefixIcon: const Icon(Icons.search, color: Colors.white54), hintText: "1000 songs me search...", hintStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: Colors.white10, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), onChanged: (v){ setM(()=> search=v); }),
             const SizedBox(height: 10),
             Text("${filtered.length} songs", style: const TextStyle(color: Colors.grey, fontSize: 11)),
             Expanded(child: ListView.builder(itemCount: filtered.length, itemBuilder: (ctx,i){
@@ -120,7 +121,7 @@ class _UploadPageState extends State<UploadPage> {
                 title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 14)),
                 leading: Icon(name==_song? Icons.radio_button_checked : Icons.radio_button_off, color: Colors.pink),
                 trailing: IconButton(icon: const Icon(Icons.play_circle, color: Colors.white70), onPressed: () async {
-                  try{ await _audioPlayer.setUrl("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"); _audioPlayer.play(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$name - Demo baj raha hai"))); }catch(e){}
+                  try{ await _audioPlayer.setUrl("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"); _audioPlayer.play(); }catch(e){}
                 }),
                 onTap: (){ setState(()=> _song = name); Navigator.pop(context); _audioPlayer.stop(); },
               );
@@ -157,7 +158,6 @@ class _UploadPageState extends State<UploadPage> {
       File fileToUpload = _file!;
       if(_showTrimmer && _isVideo &&!_isLongVideo){
         await _trimmer.saveTrimmedVideo(startValue: _startValue, endValue: _endValue, onSave: (path){ if(path!=null) fileToUpload = File(path); });
-        // thoda wait karo file banne ka
         await Future.delayed(const Duration(milliseconds: 500));
       }
       String url;
@@ -194,7 +194,7 @@ class _UploadPageState extends State<UploadPage> {
   Widget build(BuildContext context){
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(title: Text(_isLongVideo? "Long 90m ${_song!="No Song"?"+ $_song":""}" : "Upload ${_song!="No Song"?"- $_song":""}"), backgroundColor: Colors.black),
+      appBar: AppBar(title: Text(_isLongVideo? "Long 90m ${_song!="No Song"?"+ $_song":""}" : "Upload ${_song!="No Song"?"- $_song":""}"), backgroundColor: Colors.black, foregroundColor: Colors.white),
       body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(children:[
         if(_song!="No Song") Container(width:double.infinity, padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.pink.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.pink)), child: Row(children:[const Icon(Icons.music_note, color: Colors.pink, size:16), const SizedBox(width:6), Expanded(child: Text("$_song selected", style: const TextStyle(color: Colors.pink, fontWeight: FontWeight.bold))), IconButton(icon: const Icon(Icons.close, color: Colors.pink, size: 16), onPressed: ()=> setState(()=> _song="No Song"))])),
         const SizedBox(height:12),
