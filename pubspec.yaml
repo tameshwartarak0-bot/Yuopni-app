@@ -31,6 +31,8 @@ dependencies:
   wakelock_plus: ^1.2.10    
   app_links: ^6.3.2
   audioplayers: ^6.1.0
+  video_trimmer: ^3.0.0
+  just_audio: ^0.9.36
 
 dev_dependencies:
   flutter_test:
