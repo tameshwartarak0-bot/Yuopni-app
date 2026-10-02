@@ -9,7 +9,8 @@ import 'package:http/http.dart' as http;
 
 class ReelPage extends StatefulWidget {
   final int initialIndex;
-  final List<QueryDocumentSnapshot>? myReels;
+  // FIX: QueryDocumentSnapshot ki jagah DocumentSnapshot lo - ye deep link ke liye sahi hai
+  final List<DocumentSnapshot>? myReels;
   const ReelPage({super.key, this.initialIndex = 0, this.myReels});
 
   @override
@@ -19,22 +20,27 @@ class ReelPage extends StatefulWidget {
 class _ReelPageState extends State<ReelPage> {
   @override
   Widget build(BuildContext context) {
-    if (widget.myReels!= null) {
+    if (widget.myReels!= null && widget.myReels!.isNotEmpty) {
       return Scaffold(
         backgroundColor: Colors.black,
         body: PageView.builder(
           scrollDirection: Axis.vertical,
           controller: PageController(initialPage: widget.initialIndex),
           itemCount: widget.myReels!.length,
-          itemBuilder: (c, i) => ReelItem(
-            docId: widget.myReels![i].id,
-            data: widget.myReels![i].data() as Map<String, dynamic>,
-            showBack: true,
-          ),
+          itemBuilder: (c, i) {
+            var doc = widget.myReels![i];
+            var data = doc.data() as Map<String, dynamic>??? {};
+            return ReelItem(
+              docId: doc.id,
+              data: data,
+              showBack: true,
+            );
+          },
         ),
       );
     }
 
+    // Normal feed wala part same rahega
     return Scaffold(
       backgroundColor: Colors.black,
       body: StreamBuilder<QuerySnapshot>(
@@ -90,7 +96,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
 
     if (url.isNotEmpty && url.contains('http')) {
       _ctrl = VideoPlayerController.networkUrl(Uri.parse(url))
-      ..initialize().then((_) {
+     ..initialize().then((_) {
           if (mounted) {
             setState(() => _isInit = true);
             _ctrl!.setLooping(true);
@@ -141,9 +147,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
   }
 
   void _onShare() {
-    // ✅ FIXED - Tumhara asli Firebase domain + SHA
     final String videoLink = "https://yuopni-1c5e9.web.app/video?id=${widget.docId}";
-
     showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1A1A1A), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (_) => Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
       Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))),
       const SizedBox(height: 15),
@@ -175,7 +179,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
       child: Stack(fit: StackFit.expand, children: [
         _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 50))
         : _isInit && _ctrl!= null
-        ? GestureDetector(onTap: (){
+       ? GestureDetector(onTap: (){
               setState((){
                 if(_ctrl!.value.isPlaying){ _ctrl!.pause(); _songPlayer.pause(); }
                 else { _ctrl!.play(); _songPlayer.resume(); }
