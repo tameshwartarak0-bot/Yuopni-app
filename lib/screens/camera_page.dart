@@ -24,14 +24,36 @@ class _CameraPageState extends State<CameraPage> {
   VideoPlayerController? _vCtrl;
 
   @override
-  void initState(){ super.initState(); _initCam(); }
+  void initState(){ super.initState(); _initCamOnce(); }
 
-  Future<void> _initCam() async {
-    await [Permission.camera, Permission.microphone, Permission.photos].request();
-    final cams=await availableCameras();
-    _cam=CameraController(cams[0], ResolutionPreset.high, enableAudio: true);
-    await _cam!.initialize();
-    setState(()=>_init=true);
+  // EK BAAR CHECK - DUBARA PERMISSION NAHI MANGEGA
+  Future<void> _initCamOnce() async {
+    // 1. Check karo already granted hai kya?
+    var camStatus = await Permission.camera.status;
+    var micStatus = await Permission.microphone.status;
+
+    // 2. Agar granted nahi hai tabhi mango
+    if (camStatus!= PermissionStatus.granted) {
+      camStatus = await Permission.camera.request();
+    }
+    if (micStatus!= PermissionStatus.granted) {
+      micStatus = await Permission.microphone.request();
+    }
+
+    // 3. Photos permission - sirf gallery ke liye, camera ke liye zaruri nahi
+    // Isko abhi request mat karo, jab gallery kholega tab check hoga
+
+    if (camStatus.isGranted && micStatus.isGranted) {
+      final cams = await availableCameras();
+      _cam = CameraController(cams[0], ResolutionPreset.high, enableAudio: true);
+      await _cam!.initialize();
+      if(mounted) setState(()=>_init=true);
+    } else {
+      if(mounted){
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Camera permission allow karo")));
+        Navigator.pop(context);
+      }
+    }
   }
 
   void _startTimer(){ _sec=0; _timer=Timer.periodic(const Duration(seconds:1),(_){ setState(()=>_sec++); }); }
@@ -57,6 +79,16 @@ class _CameraPageState extends State<CameraPage> {
   }
 
   Future<void> _pickGallery() async {
+    // Gallery ka permission yahi check karo - sirf jab gallery kholo
+    if (await Permission.photos.status!= PermissionStatus.granted) {
+      var st = await Permission.photos.request();
+      if (st!= PermissionStatus.granted) {
+        if (await Permission.storage.status!= PermissionStatus.granted) {
+          await Permission.storage.request();
+        }
+      }
+    }
+
     final p=ImagePicker();
     XFile? f;
     if(_mode!="Story") f=await p.pickVideo(source: ImageSource.gallery, maxDuration: Duration(minutes: _mode=="Video"?90:15));
