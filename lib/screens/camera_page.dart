@@ -9,7 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'upload_page.dart';
-import '../data/songs_data.dart';
+import '../data/songs_data.dart'; // list sirf yahan se aayegi - ab no duplicate
 
 class CameraPage extends StatefulWidget {
   const CameraPage({super.key});
@@ -28,7 +28,7 @@ class _CameraPageState extends State<CameraPage> {
   bool _songPlaying=false;
   VideoPlayerController? _vCtrl;
   String _search = "";
-  Map<String,String> _cacheUrls = {}; // Ek baar fetch kiya to dubara net nahi lagega
+  Map<String,String> _cacheUrls = {};
 
   @override void initState(){ super.initState(); _initCamOnce(); }
 
@@ -45,7 +45,7 @@ class _CameraPageState extends State<CameraPage> {
     }
   }
 
-  void _startTimer(){ _sec=0; _timer=Timer.periodic(const Duration(seconds:1),(_)=>setState(()=>_sec++)); }
+  void _startTimer(){ _sec=0; _timer=Timer.periodic(const Duration(seconds:1),(_){ if(mounted) setState(()=>_sec++); }); }
   void _stopTimer()=>_timer?.cancel();
   String _fmt(int s)=> "${s~/60}:${(s%60).toString().padLeft(2,'0')}";
 
@@ -73,7 +73,7 @@ class _CameraPageState extends State<CameraPage> {
         }
       }
     }catch(_){}
-    return "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"; // fallback
+    return "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
   }
 
   Future<void> _preview() async {
@@ -91,7 +91,7 @@ class _CameraPageState extends State<CameraPage> {
     await _audio.play(UrlSource(url));
     await Future.delayed(const Duration(milliseconds:200));
     await _audio.seek(Duration(seconds: _songStart.toInt()));
-    setState(()=>_songPlaying=true);
+    if(mounted) setState(()=>_songPlaying=true);
   }
 
   Future<void> _pickGallery() async {
@@ -169,7 +169,7 @@ class _CameraPageState extends State<CameraPage> {
     if(_file!=null){
       return Scaffold(
         backgroundColor: Colors.black,
-        appBar: AppBar(backgroundColor: Colors.black, title: Text("${_vCtrl!=null?_fmt(_vCtrl!.value.position.inSeconds):_fmt(_sec)} - $_song", style: const TextStyle(fontSize: 14))),
+        appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text("${_vCtrl!=null?_fmt(_vCtrl!.value.position.inSeconds):_fmt(_sec)} - $_song", style: const TextStyle(fontSize: 14))),
         body: Column(children:[
           Expanded(child: _file!.path.endsWith(".mp4")? (_vCtrl?.value.isInitialized==true? Stack(children:[VideoPlayer(_vCtrl!), Positioned(bottom:10,left:10,right:10,child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children:[Container(padding: const EdgeInsets.symmetric(horizontal:8,vertical:4),decoration:BoxDecoration(color: Colors.black54,borderRadius:BorderRadius.circular(10)), child: Text("${_fmt(_vCtrl!.value.position.inSeconds)} / ${_fmt(_vCtrl!.value.duration.inSeconds)}", style: const TextStyle(color: Colors.white))), Container(padding: const EdgeInsets.symmetric(horizontal:8,vertical:4),decoration:BoxDecoration(color: Colors.pink,borderRadius:BorderRadius.circular(10)), child: Row(children:[const Icon(Icons.music_note,size:14,color:Colors.white), const SizedBox(width:4), Flexible(child: Text("$_song - 30s", style: const TextStyle(color: Colors.white,fontSize:11), overflow: TextOverflow.ellipsis))]))]))]) : const Center(child: CircularProgressIndicator())) : Image.file(File(_file!.path), fit: BoxFit.contain)),
           Padding(padding: const EdgeInsets.all(16), child: Row(children:[Expanded(child: OutlinedButton(onPressed: (){ _vCtrl?.dispose(); _audio.stop(); setState(()=>_file=null); }, child: const Text("Retake", style: TextStyle(color: Colors.white)))), const SizedBox(width:12), Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green), onPressed: (){ _audio.stop(); Navigator.pushReplacement(context, MaterialPageRoute(builder: (_)=> UploadPage(prefile: File(_file!.path), isVideo: true, isLong: _mode=="Video", songName: "$_song @${_songStart.toInt()}s"))); }, child: const Text("Next")))]))
@@ -178,7 +178,7 @@ class _CameraPageState extends State<CameraPage> {
     }
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, title: Text("Create $_mode"), actions: [Center(child: Padding(padding: const EdgeInsets.only(right: 8), child: Text(_isRec?"🔴 ${_fmt(_sec)}":_song, style: const TextStyle(color: Colors.pink, fontSize: 12), overflow: TextOverflow.ellipsis))), IconButton(icon: const Icon(Icons.music_note), onPressed: _pickSong)]),
+      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text("Create $_mode"), actions: [Center(child: Padding(padding: const EdgeInsets.only(right: 8), child: Text(_isRec?"🔴 ${_fmt(_sec)}":_song, style: const TextStyle(color: Colors.pink, fontSize: 12), overflow: TextOverflow.ellipsis))), IconButton(icon: const Icon(Icons.music_note, color: Colors.white), onPressed: _pickSong)]),
       body: Stack(children:[
         _init? CameraPreview(_cam!) : const Center(child: CircularProgressIndicator()),
         Positioned(top:15,left:0,right:0,child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: ["Reel","Video","Story"].map((e)=> GestureDetector(onTap: ()=>setState(()=>_mode=e), child: Container(padding: const EdgeInsets.symmetric(horizontal:18,vertical:8), decoration: BoxDecoration(color: _mode==e?Colors.white:Colors.white24, borderRadius: BorderRadius.circular(8)), child: Text(e, style: TextStyle(color: _mode==e?Colors.black:Colors.white, fontWeight: FontWeight.bold))))).toList())),
