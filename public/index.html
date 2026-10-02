@@ -1,36 +1,87 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Yuopni - Watch Reel</title>
 <style>
-body{margin:0;background:#000;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center}
-.box{padding:24px;max-width:400px}
-h1{font-size:32px;margin-bottom:10px}
-p{color:#aaa}
-.btn{display:inline-block;margin-top:20px;padding:14px 28px;background:#ff3a5e;color:#fff;border-radius:30px;text-decoration:none;font-weight:bold;font-size:16px}
-.small{margin-top:20px;display:block;color:#666;font-size:13px;text-decoration:none}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;color:#fff;font-family:sans-serif;height:100vh;display:flex;overflow:hidden}
+.left{flex:1;background:#000;display:flex;align-items:center;justify-content:center;position:relative}
+.left video{max-height:100vh;max-width:100%;}
+.right{width:400px;background:#121212;padding:20px;display:flex;flex-direction:column;border-left:1px solid #222}
+.logo{font-size:28px;font-weight:bold;margin-bottom:20px}
+.user{display:flex;align-items:center;gap:10px;margin-bottom:15px}
+.user.av{width:40px;height:40px;background:#ff3a5e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold}
+.title{margin-bottom:20px;line-height:1.4}
+.btn{padding:14px;background:#ff3a5e;color:#fff;border:none;border-radius:30px;font-weight:bold;font-size:16px;cursor:pointer;text-align:center;text-decoration:none}
+.small{margin-top:15px;text-align:center;color:#888;font-size:13px}
+#loader{position:absolute;color:#fff}
+@media(max-width:768px){body{flex-direction:column}.right{width:100%;border-left:none}.left video{max-height:55vh}}
 </style>
+<!-- Firebase JS SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
-<div class="box">
-<h1>Yuopni 🔥</h1>
-<p id="msg">Ye amazing reel dekhne ke liye app open karo</p>
-<a class="btn" id="openBtn" href="#">Open in Yuopni App</a>
-<a class="small" href="#">Play Store se Download karo</a>
-<p style="margin-top:30px;font-size:12px;color:#444" id="idText"></p>
+<div class="left">
+<p id="loader">Loading Reel...</p>
+<video id="reelVideo" controls autoplay loop playsinline style="display:none"></video>
 </div>
+<div class="right">
+<div class="logo">Yuopni 🔥</div>
+<div class="user"><div class="av" id="av">Y</div><b id="username">Yuopni User</b></div>
+<div class="title" id="caption">Ye Reel dekho...</div>
+<a class="btn" id="openApp" href="#">Open in Yuopni App</a>
+<a class="small" href="#">Get Yuopni App on Play Store</a>
+<p class="small" id="vid"></p>
+</div>
+
 <script>
-  const params = new URLSearchParams(window.location.search);
-  const id = params.get('id');
-  if(id){
-    document.getElementById('idText').innerText = "Video ID: " + id;
-    document.getElementById('msg').innerText = "Ye Reel dekhne ke liye Yuopni App install karo";
-    document.getElementById('openBtn').href = "https://yuopni-1c5e9.web.app/video?id=" + id;
-  } else {
-    document.getElementById('msg').innerText = "Welcome to Yuopni - India's Trending Short Video App";
+// TODO: Yahan apna Firebase Config daalo - Firebase Console > Project Settings > General me milega
+const firebaseConfig = {
+  apiKey: "AIzaSyA8o6s_F7RylZzqzqZqZqZqZqZqZqZqZq",
+  authDomain: "yuopni-1c5e9.firebaseapp.com",
+  projectId: "yuopni-1c5e9",
+  storageBucket: "yuopni-1c5e9.appspot.com",
+  messagingSenderId: "123456789",
+  appId: "1:123456789:web:abcdef"
+};
+// Config nikalne ka tarika: Firebase Console > Project Settings > Your Apps > SDK setup me milega
+// ProjectId tumhara yuopni-1c5e9 hai, bas apiKey wahan se copy karke yahan daal dena
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+const params = new URLSearchParams(window.location.search);
+const id = params.get('id');
+document.getElementById('vid').innerText = id? "Video ID: " + id : "";
+document.getElementById('openApp').href = "https://yuopni-1c5e9.web.app/video?id=" + (id||'');
+
+async function loadReel(){
+  if(!id) { document.getElementById('loader').innerText = "Welcome to Yuopni"; return; }
+  try{
+    const doc = await db.collection('posts').doc(id).get();
+    if(!doc.exists){ document.getElementById('loader').innerText = "Reel not found"; return; }
+    const data = doc.data();
+    const videoUrl = data.mediaUrl || data.videoUrl || data.imageUrl;
+    const username = data.username || "Yuopni User";
+    const caption = data.title || data.caption || "";
+
+    document.getElementById('username').innerText = username;
+    document.getElementById('av').innerText = username[0].toUpperCase();
+    document.getElementById('caption').innerText = caption;
+
+    const v = document.getElementById('reelVideo');
+    v.src = videoUrl;
+    v.style.display = "block";
+    document.getElementById('loader').style.display = "none";
+    v.play();
+  }catch(e){
+    document.getElementById('loader').innerText = "Error: " + e.message + " (Rules Publish karo)";
   }
+}
+loadReel();
 </script>
 </body>
 </html>
