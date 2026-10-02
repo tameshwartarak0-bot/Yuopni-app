@@ -26,7 +26,6 @@ class _CameraPageState extends State<CameraPage> {
   bool _songPlaying=false;
   VideoPlayerController? _vCtrl;
   String _search = "";
-  final String demoAudioUrl = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
 
   @override void initState(){ super.initState(); _initCamOnce(); }
 
@@ -71,9 +70,13 @@ class _CameraPageState extends State<CameraPage> {
     }));
   }
 
+  // YAHAN FIX KIYA - AB HAR GAANE KI ALAG TUNE BAJEGI
   Future<void> _playSongWithVideo() async {
+    int idx = allSongs1000.indexOf(_song);
+    String url = getSongUrl(idx < 0? 0 : idx);
     await _audio.stop();
-    await _audio.play(UrlSource(demoAudioUrl));
+    await _audio.play(UrlSource(url));
+    await Future.delayed(const Duration(milliseconds: 300));
     await _audio.seek(Duration(seconds: _songStart.toInt()));
     setState(()=>_songPlaying=true);
   }
@@ -85,7 +88,7 @@ class _CameraPageState extends State<CameraPage> {
     }
     final p=ImagePicker();
     XFile? f = _mode!="Story"
-   ? await p.pickVideo(source: ImageSource.gallery, maxDuration: Duration(minutes: _mode=="Video"?90:15))
+  ? await p.pickVideo(source: ImageSource.gallery, maxDuration: Duration(minutes: _mode=="Video"?90:15))
       : await p.pickImage(source: ImageSource.gallery);
     if(f!=null){ setState(()=>_file=f); if(f.path.endsWith(".mp4")) _preview(); }
   }
@@ -118,6 +121,7 @@ class _CameraPageState extends State<CameraPage> {
                 child: Column(children:[
                     Row(children:[const Icon(Icons.music_note,color:Colors.pink), const SizedBox(width:8), Expanded(child:Text(_song,style:const TextStyle(color:Colors.white,fontWeight:FontWeight.bold))), Text("${_songStart.toInt()}s se", style:const TextStyle(color:Colors.pink))]),
                     Slider(value: _songStart, min:0, max:60, divisions:60, activeColor: Colors.pink, onChanged: (v){ setState(()=>_songStart=v); setModal(()=>_songStart=v); _audio.seek(Duration(seconds: v.toInt())); }),
+                    const Text("Trimmer - Gaane ka hissa chuno", style: TextStyle(color: Colors.white54, fontSize: 12))
                   ]),
               ),
               const SizedBox(height:10),
@@ -131,8 +135,17 @@ class _CameraPageState extends State<CameraPage> {
                     title: Text(filtered[i], style: TextStyle(color: selected?Colors.pink:Colors.white)),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children:[
                       IconButton(icon: Icon(_songPlaying && selected? Icons.pause:Icons.play_arrow, color: Colors.white), onPressed: () async {
-                        if(_songPlaying && selected){ await _audio.pause(); setState(()=>_songPlaying=false); setModal(()=>_songPlaying=false); }
-                        else { setState(()=>_song=filtered[i]); setModal(()=>_song=filtered[i]); await _audio.play(UrlSource(demoAudioUrl)); setState(()=>_songPlaying=true); setModal(()=>_songPlaying=true); }
+                        if(_songPlaying && selected){
+                          await _audio.pause(); setState(()=>_songPlaying=false); setModal(()=>_songPlaying=false);
+                        } else {
+                          setState(()=>_song=filtered[i]); setModal(()=>_song=filtered[i]);
+                          int idx = allSongs1000.indexOf(filtered[i]);
+                          String url = getSongUrl(idx);
+                          await _audio.stop();
+                          await _audio.play(UrlSource(url));
+                          await _audio.seek(Duration(seconds: _songStart.toInt()));
+                          setState(()=>_songPlaying=true); setModal(()=>_songPlaying=true);
+                        }
                       }),
                       ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: selected?Colors.green:Colors.pink), onPressed: (){ setState(()=>_song=filtered[i]); Navigator.pop(context); if(_file!=null) _playSongWithVideo(); }, child: Text(selected?"Using":"Use")),
                     ]),
