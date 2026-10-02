@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:http/http.dart' as http;
 
 class ReelPage extends StatefulWidget {
   final int initialIndex;
@@ -32,34 +35,16 @@ class _ReelPageState extends State<ReelPage> {
       );
     }
 
-    // FIX: 'reels' ki jagah 'posts' se bhi lo, taaki Home aur Reel dono me same dikhe
     return Scaffold(
       backgroundColor: Colors.black,
       body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('posts').snapshots(),
+        stream: FirebaseFirestore.instance.collection('posts').orderBy('createdAt', descending: true).snapshots(),
         builder: (context, snap) {
-          if (snap.hasError) {
-            return Center(child: Text("Error: ${snap.error}", style: const TextStyle(color: Colors.white)));
-          }
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator(color: Colors.white));
-          }
-          if (!snap.hasData || snap.data!.docs.isEmpty) {
-            return const Center(child: Text("Koi Reel nahi - Pehle upload karo", style: TextStyle(color: Colors.white)));
-          }
-          // Client side sort
-          var docs = snap.data!.docs.toList();
-          docs.sort((a,b){
-            var da = a.data() as Map<String,dynamic>;
-            var db = b.data() as Map<String,dynamic>;
-            Timestamp? ta = da['createdAt'] is Timestamp? da['createdAt'] : da['timestamp'] is Timestamp? da['timestamp'] : null;
-            Timestamp? tb = db['createdAt'] is Timestamp? db['createdAt'] : db['timestamp'] is Timestamp? db['timestamp'] : null;
-            if(ta==null && tb==null) return 0;
-            if(ta==null) return 1;
-            if(tb==null) return -1;
-            return tb.compareTo(ta);
-          });
+          if (snap.hasError) return Center(child: Text("Error: ${snap.error}", style: const TextStyle(color: Colors.white)));
+          if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.white));
+          if (!snap.hasData || snap.data!.docs.isEmpty) return const Center(child: Text("Koi Reel nahi", style: TextStyle(color: Colors.white)));
 
+          var docs = snap.data!.docs;
           return PageView.builder(
             scrollDirection: Axis.vertical,
             itemCount: docs.length,
@@ -85,19 +70,19 @@ class ReelItem extends StatefulWidget {
 }
 
 class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
+  @override bool get wantKeepAlive => true;
 
   VideoPlayerController? _ctrl;
+  final AudioPlayer _songPlayer = AudioPlayer();
   bool _isInit = false;
   bool _isError = false;
   bool _liked = false;
   int _likeCount = 0;
+  bool _songStarted = false;
 
   @override
   void initState() {
     super.initState();
-    // FIX: posts collection me mediaUrl, videoUrl, imageUrl kuch bhi ho sakta hai
     String url = (widget.data['mediaUrl']?? widget.data['videoUrl']?? widget.data['imageUrl']?? '').toString().trim();
     _likeCount = (widget.data['likes'] as List?)?.length?? 0;
     var uid = FirebaseAuth.instance.currentUser?.uid;
@@ -111,9 +96,9 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
             _ctrl!.setLooping(true);
             _ctrl!.setVolume(1.0);
             _ctrl!.play();
+            _playSongIfAny(); // yahan song bajega
           }
         }).catchError((e) {
-          debugPrint("VIDEO ERROR $e URL $url");
           if (mounted) setState(() => _isError = true);
         });
     } else {
@@ -121,22 +106,59 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     }
   }
 
+  Future<void> _playSongIfAny() async {
+    String songFull = (widget.data['songName']?? '').toString();
+    if (songFull.isEmpty || songFull == 'No Song' || _songStarted) return;
+    _songStarted = true;
+
+    try {
+      String songName = songFull.split(' @')[0];
+      int startSec = 0;
+      if (songFull.contains('@')) {
+        String t = songFull.split('@')[1].replaceAll('s','').trim();
+        startSec = int.tryParse(t)?? 0;
+      }
+      // iTunes se real preview URL
+      final res = await http.get(Uri.parse("https://itunes.apple.com/search?term=${Uri.encodeComponent(songName)}&media=music&limit=1&country=in"));
+      if (res.statusCode == 200) {
+        var j = jsonDecode(res.body);
+        if (j['results']!= null && j['results'].length > 0) {
+          String preview = j['results'][0]['previewUrl'];
+          await _songPlayer.play(UrlSource(preview));
+          await _songPlayer.seek(Duration(seconds: startSec));
+        }
+      }
+    } catch (_) {}
+  }
+
   @override
-  void dispose() { _ctrl?.dispose(); super.dispose(); }
+  void dispose() { _ctrl?.dispose(); _songPlayer.dispose(); super.dispose(); }
 
   void _toggleLike() async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    setState(() {
-      _liked =!_liked;
-      _likeCount = _liked? _likeCount + 1 : _likeCount - 1;
-    });
+    setState(() { _liked =!_liked; _likeCount = _liked? _likeCount + 1 : _likeCount - 1; });
     var ref = FirebaseFirestore.instance.collection('posts').doc(widget.docId);
-    if (_liked) {
-      ref.update({'likes': FieldValue.arrayUnion([uid])});
-    } else {
-      ref.update({'likes': FieldValue.arrayRemove([uid])});
-    }
+    if (_liked) ref.update({'likes': FieldValue.arrayUnion([uid])}); else ref.update({'likes': FieldValue.arrayRemove([uid])});
+  }
+
+  void _onShare() {
+    String videoLink = "https://yuopni.com/video?id=${widget.docId}";
+    showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1A1A1A), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (_) => Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))),
+      const SizedBox(height: 15),
+      ListTile(leading: const CircleAvatar(backgroundColor: Colors.orange, child: Icon(Icons.message, color: Colors.white)), title: const Text("Yuopni Message me bhejo", style: TextStyle(color: Colors.white)), subtitle: const Text("App ke andar share", style: TextStyle(color: Colors.white54)), onTap: (){
+        Navigator.pop(context);
+        // Yahan tumhara message page khulega
+        // Navigator.push(context, MaterialPageRoute(builder: (_)=> MessagePage(link: videoLink)));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Message page: $videoLink")));
+      }),
+      ListTile(leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.share, color: Colors.white)), title: const Text("WhatsApp pe bhejo", style: TextStyle(color: Colors.white)), subtitle: Text(videoLink, style: const TextStyle(color: Colors.white54, fontSize: 12)), onTap: (){
+        Navigator.pop(context);
+        Share.share("Yuopni pe ye Reel dekho 🔥 $videoLink");
+      }),
+      const SizedBox(height: 10),
+    ])));
   }
 
   @override
@@ -145,20 +167,16 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     return Container(
       color: Colors.black,
       child: Stack(fit: StackFit.expand, children: [
-        _isError
-       ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.broken_image, color: Colors.white, size: 50), SizedBox(height: 10), Text("Video load nahi hua", style: TextStyle(color: Colors.white))]))
+        _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 50))
         : _isInit && _ctrl!= null
-         ? GestureDetector(
-              onTap: () {
-                setState(() {
-                  _ctrl!.value.isPlaying? _ctrl!.pause() : _ctrl!.play();
-                });
-              },
-              child: Center(child: AspectRatio(aspectRatio: _ctrl!.value.aspectRatio, child: VideoPlayer(_ctrl!))),
-            )
+         ? GestureDetector(onTap: (){
+              setState((){
+                if(_ctrl!.value.isPlaying){ _ctrl!.pause(); _songPlayer.pause(); }
+                else { _ctrl!.play(); _songPlayer.resume(); }
+              });
+            }, child: Center(child: AspectRatio(aspectRatio: _ctrl!.value.aspectRatio, child: VideoPlayer(_ctrl!))))
           : const Center(child: CircularProgressIndicator(color: Colors.white)),
 
-        // Center play icon when paused
         if (_isInit && _ctrl!= null &&!_ctrl!.value.isPlaying)
           const Center(child: Icon(Icons.play_arrow, size: 80, color: Colors.white54)),
 
@@ -172,7 +190,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
             Text(widget.data['username']?? 'Yuopni User', style: const TextStyle(color: Colors.white, fontSize: 13)),
           ]),
           if ((widget.data['songName']?? '').toString().isNotEmpty && widget.data['songName']!= 'No Song')
-            Padding(padding: const EdgeInsets.only(top:4), child: Row(children: [const Icon(Icons.music_note, color: Colors.white, size: 14), const SizedBox(width: 4), Text(widget.data['songName'], style: const TextStyle(color: Colors.white, fontSize: 12))]))
+            Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [const Icon(Icons.music_note, color: Colors.pink, size: 14), const SizedBox(width: 4), Expanded(child: Text(widget.data['songName'], style: const TextStyle(color: Colors.white, fontSize: 12), overflow: TextOverflow.ellipsis))]))
         ])),
 
         Positioned(right: 5, bottom: 90, child: Column(children: [
@@ -182,12 +200,11 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
           IconButton(icon: const Icon(Icons.comment_outlined, color: Colors.white, size: 28), onPressed: () => showModalBottomSheet(context: context, backgroundColor: Colors.grey[900], builder: (_) => CommentSheet(reelId: widget.docId))),
           const Text("Comment", style: TextStyle(color: Colors.white, fontSize: 10)),
           const SizedBox(height: 15),
-          IconButton(icon: const Icon(Icons.share, color: Colors.white, size: 28), onPressed: () => Share.share(widget.data['mediaUrl']?? widget.data['videoUrl']?? '')),
+          IconButton(icon: const Icon(Icons.share, color: Colors.white, size: 28), onPressed: _onShare),
           const Text("Share", style: TextStyle(color: Colors.white, fontSize: 10)),
         ])),
 
-        if (widget.showBack)
-          Positioned(top: 40, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context))),
+        if (widget.showBack) Positioned(top: 40, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context))),
       ]),
     );
   }
@@ -203,20 +220,14 @@ class CommentSheet extends StatelessWidget {
       const Text("Comments", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       Expanded(child: StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('posts').doc(reelId).collection('comments').orderBy('createdAt', descending: true).snapshots(), builder: (_, snap) {
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-        return ListView(children: snap.data!.docs.map((d) {
-          var m = d.data() as Map<String, dynamic>;
-          return ListTile(title: Text(m['text']?? '', style: const TextStyle(color: Colors.white)), subtitle: Text(m['username']?? '', style: const TextStyle(color: Colors.grey)));
-        }).toList());
+        return ListView(children: snap.data!.docs.map((d) { var m = d.data() as Map<String, dynamic>; return ListTile(title: Text(m['text']?? '', style: const TextStyle(color: Colors.white)), subtitle: Text(m['username']?? '', style: const TextStyle(color: Colors.grey))); }).toList());
       })),
-      Row(children: [
-        Expanded(child: TextField(controller: c, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(hintText: "Comment...", hintStyle: TextStyle(color: Colors.grey)))),
-        IconButton(icon: const Icon(Icons.send, color: Colors.white), onPressed: () async {
-          if (c.text.trim().isEmpty) return;
-          var u = FirebaseAuth.instance.currentUser;
-          await FirebaseFirestore.instance.collection('posts').doc(reelId).collection('comments').add({'text': c.text.trim(), 'username': u?.displayName?? 'User', 'createdAt': FieldValue.serverTimestamp()});
-          c.clear();
-        })
-      ])
+      Row(children: [Expanded(child: TextField(controller: c, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(hintText: "Comment...", hintStyle: TextStyle(color: Colors.grey)))), IconButton(icon: const Icon(Icons.send, color: Colors.white), onPressed: () async {
+        if (c.text.trim().isEmpty) return;
+        var u = FirebaseAuth.instance.currentUser;
+        await FirebaseFirestore.instance.collection('posts').doc(reelId).collection('comments').add({'text': c.text.trim(), 'username': u?.displayName?? 'User', 'createdAt': FieldValue.serverTimestamp()});
+        c.clear();
+      })])
     ]));
   }
 }
