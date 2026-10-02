@@ -1,12 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- YUOPNI ALL PERMISSIONS - FIXED -->
+    <!-- YUOPNI ALL PERMISSIONS -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
@@ -14,11 +13,6 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.READ_CONTACTS" />
-    <uses-permission android:name="android.permission.READ_CALENDAR" />
-    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <application
         android:label="yuopni"
@@ -42,14 +36,23 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- YUOPNI DEEP LINK - APP LINK FIX -->
+            <!-- FREE APP LINK - YEHI KAAM KAREGA -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="yuopni.com" />
-                <data android:scheme="https" android:host="www.yuopni.com" />
+                <data android:scheme="https" android:host="yuopni.web.app" android:pathPrefix="/video" />
+                <data android:scheme="https" android:host="yuopni.firebaseapp.com" android:pathPrefix="/video" />
             </intent-filter>
+
+            <!-- WHATSAPP SE DIRECT APP KHULWANE KE LIYE -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="yuopni" android:host="video" />
+            </intent-filter>
+
             <!-- App ke andar share ke liye -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
@@ -64,14 +67,4 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT"/>
-            <data android:mimeType="text/plain"/>
-        </intent>
-        <intent>
-            <action android:name="android.intent.action.SEND"/>
-            <data android:mimeType="*/*"/>
-        </intent>
-    </queries>
 </manifest>
