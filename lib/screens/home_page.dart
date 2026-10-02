@@ -3,7 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
-// FIX: Import sahi karo
 import '../global.dart';
 import 'upload_page.dart';
 
@@ -45,25 +44,13 @@ class HomePage extends StatelessWidget {
               );
             },
           ),
-
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                 .collection('posts')
-                 .orderBy('createdAt', descending: true)
-                 .snapshots(),
+              // FIX: orderBy hata diya - ab koi field missing ho to bhi chalega
+              stream: FirebaseFirestore.instance.collection('posts').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.hasError) {
-                  // Agar createdAt nahi hai to timestamp se try karo
-                  return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('posts').orderBy('timestamp', descending: true).snapshots(),
-                    builder: (c, s2){
-                      if(s2.hasError) return Center(child: Text("Error: ${snapshot.error}", style: TextStyle(color: Colors.white), textAlign: TextAlign.center));
-                      if(!s2.hasData) return const Center(child: CircularProgressIndicator(color: Colors.white));
-                      if(s2.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.white)));
-                      return _buildList(s2.data!.docs);
-                    },
-                  );
+                  return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.white), textAlign: TextAlign.center));
                 }
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator(color: Colors.white));
@@ -71,7 +58,21 @@ class HomePage extends StatelessWidget {
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                   return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.white)));
                 }
-                return _buildList(snapshot.data!.docs);
+                
+                // Client side sorting - createdAt ya timestamp jo bhi ho
+                var docs = snapshot.data!.docs.toList();
+                docs.sort((a,b){
+                  var da = (a.data() as Map<String,dynamic>);
+                  var db = (b.data() as Map<String,dynamic>);
+                  Timestamp? ta = da['createdAt'] is Timestamp ? da['createdAt'] : da['timestamp'] is Timestamp ? da['timestamp'] : null;
+                  Timestamp? tb = db['createdAt'] is Timestamp ? db['createdAt'] : db['timestamp'] is Timestamp ? db['timestamp'] : null;
+                  if(ta==null && tb==null) return 0;
+                  if(ta==null) return 1;
+                  if(tb==null) return -1;
+                  return tb.compareTo(ta);
+                });
+
+                return _buildList(docs);
               },
             ),
           ),
@@ -139,13 +140,11 @@ class VideoThumbCard extends StatefulWidget {
 
 class _VideoThumbCardState extends State<VideoThumbCard> {
   VideoPlayerController? _ctrl;
-  final AudioPlayer _audio = AudioPlayer();
   bool _playing=false;
 
   void _play() async {
     if(_playing){
       await _ctrl?.pause();
-      await _audio.pause();
       setState(()=>_playing=false);
       return;
     }
@@ -153,15 +152,10 @@ class _VideoThumbCardState extends State<VideoThumbCard> {
     await _ctrl!.initialize();
     _ctrl!.setLooping(true);
     _ctrl!.play();
-    if(widget.songName!="No Song"){
-      try{
-        await _audio.play(UrlSource("https://commondatastorage.googleapis.com/codeskulptor-assets/week7-bounce.m4a"));
-      }catch(e){}
-    }
     setState(()=>_playing=true);
   }
 
-  @override void dispose(){ _ctrl?.dispose(); _audio.dispose(); super.dispose(); }
+  @override void dispose(){ _ctrl?.dispose(); super.dispose(); }
 
   @override Widget build(BuildContext context){
     if(_playing && _ctrl!=null && _ctrl!.value.isInitialized){
