@@ -1,11 +1,8 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:http/http.dart' as http;
 
 class ReelPage extends StatefulWidget {
   final int initialIndex;
@@ -77,12 +74,10 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
   @override bool get wantKeepAlive => true;
 
   VideoPlayerController? _ctrl;
-  final AudioPlayer _songPlayer = AudioPlayer();
   bool _isInit = false;
   bool _isError = false;
   bool _liked = false;
   int _likeCount = 0;
-  bool _songStarted = false;
 
   @override
   void initState() {
@@ -94,13 +89,12 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
 
     if (url.isNotEmpty && url.contains('http')) {
       _ctrl = VideoPlayerController.networkUrl(Uri.parse(url))
-    ..initialize().then((_) {
+   ..initialize().then((_) {
           if (mounted) {
             setState(() => _isInit = true);
             _ctrl!.setLooping(true);
             _ctrl!.setVolume(1.0);
             _ctrl!.play();
-            _playSongIfAny();
           }
         }).catchError((e) {
           if (mounted) setState(() => _isError = true);
@@ -110,31 +104,8 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     }
   }
 
-  Future<void> _playSongIfAny() async {
-    String songFull = (widget.data['songName']?? '').toString();
-    if (songFull.isEmpty || songFull == 'No Song' || _songStarted) return;
-    _songStarted = true;
-    try {
-      String songName = songFull.split(' @')[0];
-      int startSec = 0;
-      if (songFull.contains('@')) {
-        String t = songFull.split('@')[1].replaceAll('s','').trim();
-        startSec = int.tryParse(t)?? 0;
-      }
-      final res = await http.get(Uri.parse("https://itunes.apple.com/search?term=${Uri.encodeComponent(songName)}&media=music&limit=1&country=in"));
-      if (res.statusCode == 200) {
-        var j = jsonDecode(res.body);
-        if (j['results']!= null && j['results'].length > 0) {
-          String preview = j['results'][0]['previewUrl'];
-          await _songPlayer.play(UrlSource(preview));
-          await _songPlayer.seek(Duration(seconds: startSec));
-        }
-      }
-    } catch (_) {}
-  }
-
   @override
-  void dispose() { _ctrl?.dispose(); _songPlayer.dispose(); super.dispose(); }
+  void dispose() { _ctrl?.dispose(); super.dispose(); }
 
   void _toggleLike() async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
@@ -177,10 +148,10 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
       child: Stack(fit: StackFit.expand, children: [
         _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 50))
         : _isInit && _ctrl!= null
-      ? GestureDetector(onTap: (){
+     ? GestureDetector(onTap: (){
               setState((){
-                if(_ctrl!.value.isPlaying){ _ctrl!.pause(); _songPlayer.pause(); }
-                else { _ctrl!.play(); _songPlayer.resume(); }
+                if(_ctrl!.value.isPlaying){ _ctrl!.pause(); }
+                else { _ctrl!.play(); }
               });
             }, child: Center(child: AspectRatio(aspectRatio: _ctrl!.value.aspectRatio, child: VideoPlayer(_ctrl!))))
           : const Center(child: CircularProgressIndicator(color: Colors.white)),
