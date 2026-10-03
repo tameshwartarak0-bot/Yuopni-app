@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import '../widgets/login_dialog.dart';
 import 'reel_page.dart';
@@ -58,13 +59,37 @@ class _ProfilePageState extends State<ProfilePage> {
     await prefs.remove('userName');
     await prefs.remove('userPhoto');
     await prefs.remove('isLoggedIn');
-
     if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginPage()),
-        (route) => false,
-      );
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginPage()), (route) => false);
+    }
+  }
+
+  // --- YEH NAYA DELETE FUNCTION HAI ---
+  Future<void> _deletePost(String postId, Map<String, dynamic> data) async {
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text("Delete kare?", style: TextStyle(color: Colors.white)),
+        content: const Text("Ye post hamesha ke liye delete ho jayegi.", style: TextStyle(color: Colors.grey)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirm!= true) return;
+    try {
+      await FirebaseFirestore.instance.collection('posts').doc(postId).delete();
+      // Agar Supabase path save hai to file bhi delete
+      if (data['videoPath']!= null) {
+        try {
+          await Supabase.instance.client.storage.from('videos').remove([data['videoPath']]);
+        } catch (_) {}
+      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Post delete ho gayi")));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     }
   }
 
@@ -89,40 +114,16 @@ class _ProfilePageState extends State<ProfilePage> {
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-         ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
-              leading: acc['photo']!= ""? CircleAvatar(backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(child: Text(acc['name'][0])),
-              title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
-              subtitle: Text(acc['email']),
-              onTap: () async {
-                Navigator.pop(context);
-                await _logout();
-              },
-            )),
+           ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+                  leading: acc['photo']!= ""? CircleAvatar(backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(child: Text(acc['name'][0])),
+                  title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
+                  subtitle: Text(acc['email']),
+                  onTap: () async { Navigator.pop(context); await _logout(); },
+                )),
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text("Add / Login Another Account"),
-                onPressed: () async {
-                  Navigator.pop(context);
-                  await _saveCurrentAccount();
-                  await _logout();
-                },
-              ),
-            ),
+            SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.add), label: const Text("Add / Login Another Account"), onPressed: () async { Navigator.pop(context); await _saveCurrentAccount(); await _logout(); })),
             const SizedBox(height: 10),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text("Logout", style: TextStyle(color: Colors.white)),
-                onPressed: () async {
-                  Navigator.pop(context);
-                  await _logout();
-                },
-              ),
-            ),
+            SizedBox(width: double.infinity, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text("Logout", style: TextStyle(color: Colors.white)), onPressed: () async { Navigator.pop(context); await _logout(); })),
           ],
         ),
       ),
@@ -147,15 +148,7 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      return Center(
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          const CircleAvatar(radius: 50, child: Icon(Icons.person, size: 50)),
-          const SizedBox(height: 10),
-          const Text("Login karke apna profile dekho", style: TextStyle(color: Colors.black)),
-          const SizedBox(height: 10),
-          ElevatedButton(onPressed: () => showDialog(context: context, builder: (_) => const LoginDialog()), child: const Text("Login"))
-        ]),
-      );
+      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const CircleAvatar(radius: 50, child: Icon(Icons.person, size: 50)), const SizedBox(height: 10), const Text("Login karke apna profile dekho", style: TextStyle(color: Colors.black)), const SizedBox(height: 10), ElevatedButton(onPressed: () => showDialog(context: context, builder: (_) => const LoginDialog()), child: const Text("Login"))]));
     }
 
     return DefaultTabController(
@@ -173,15 +166,7 @@ class _ProfilePageState extends State<ProfilePage> {
             Text(user.displayName?? "Yuopni User", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
             Text(user.email?? "", style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 10),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              ElevatedButton(onPressed: _switchAccountDialog, child: const Text("Switch Account")),
-              const SizedBox(width: 10),
-              ElevatedButton(
-                onPressed: _logout,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white),
-                child: const Text("Logout")
-              ),
-            ]),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [ElevatedButton(onPressed: _switchAccountDialog, child: const Text("Switch Account")), const SizedBox(width: 10), ElevatedButton(onPressed: _logout, style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white), child: const Text("Logout"))]),
             const SizedBox(height: 5),
             Text("${savedAccounts.length} account saved", style: const TextStyle(fontSize: 11, color: Colors.grey)),
             const SizedBox(height: 10),
@@ -195,18 +180,34 @@ class _ProfilePageState extends State<ProfilePage> {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator());
                       if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.black)));
                       var docs = _sortDocs(snap.data!.docs);
-                      return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: docs.length, itemBuilder: (_, i) {
-                        var d = docs[i].data() as Map<String, dynamic>;
-                        String url = (d['mediaUrl']?? d['imageUrl']?? d['videoUrl']?? '').toString();
-                        bool isVideo = d['isVideo']==true || url.contains('.mp4');
-                        return GestureDetector(
-                          onTap: isVideo? () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: docs.where((e) => (e.data() as Map)['isVideo']==true || (e.data() as Map)['mediaUrl'].toString().contains('.mp4')).toList()))) : null,
-                          child: Stack(fit: StackFit.expand, children: [
-                            CachedNetworkImage(imageUrl: url, fit: BoxFit.cover),
-                            if(isVideo) const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
-                          ]),
-                        );
-                      });
+                      return GridView.builder(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
+                        itemCount: docs.length,
+                        itemBuilder: (_, i) {
+                          var doc = docs[i];
+                          var d = doc.data() as Map<String, dynamic>;
+                          String url = (d['mediaUrl']?? d['imageUrl']?? d['videoUrl']?? '').toString();
+                          bool isVideo = d['isVideo']==true || url.contains('.mp4');
+                          return GestureDetector(
+                            onTap: isVideo? () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: docs.where((e) => (e.data() as Map)['isVideo']==true || (e.data() as Map)['mediaUrl'].toString().contains('.mp4')).toList()))) : null,
+                            // Long press pe delete
+                            onLongPress: () => _deletePost(doc.id, d),
+                            child: Stack(fit: StackFit.expand, children: [
+                              CachedNetworkImage(imageUrl: url, fit: BoxFit.cover),
+                              if(isVideo) const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
+                              // Delete icon sirf owner ke liye - top right
+                              Positioned(
+                                top: 2,
+                                right: 2,
+                                child: GestureDetector(
+                                  onTap: () => _deletePost(doc.id, d),
+                                  child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.delete, size: 14, color: Colors.white)),
+                                ),
+                              ),
+                            ]),
+                          );
+                        },
+                      );
                     },
                   ),
                   StreamBuilder<QuerySnapshot>(
@@ -214,24 +215,34 @@ class _ProfilePageState extends State<ProfilePage> {
                     builder: (c, snap) {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator());
                       var all = _sortDocs(snap.data!.docs);
-                      var reels = all.where((doc){
-                        var d = doc.data() as Map<String,dynamic>;
-                        var url = (d['mediaUrl']?? d['videoUrl']?? '').toString();
-                        return d['isVideo']==true || url.toLowerCase().contains('.mp4');
-                      }).toList();
+                      var reels = all.where((doc){ var d = doc.data() as Map<String,dynamic>; var url = (d['mediaUrl']?? d['videoUrl']?? '').toString(); return d['isVideo']==true || url.toLowerCase().contains('.mp4'); }).toList();
                       if (reels.isEmpty) return const Center(child: Text("Abhi koi Reel nahi", style: TextStyle(color: Colors.black)));
-                      return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: reels.length, itemBuilder: (_, i) {
-                        var d = reels[i].data() as Map<String, dynamic>;
-                        String thumb = (d['thumbnail']?? d['mediaUrl']?? d['videoUrl']?? '').toString();
-                        return GestureDetector(
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: reels))),
-                          child: Stack(fit: StackFit.expand, children: [
-                            CachedNetworkImage(imageUrl: thumb, fit: BoxFit.cover),
-                            Container(color: Colors.black26),
-                            const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
-                          ]),
-                        );
-                      });
+                      return GridView.builder(
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
+                        itemCount: reels.length,
+                        itemBuilder: (_, i) {
+                          var doc = reels[i];
+                          var d = doc.data() as Map<String, dynamic>;
+                          String thumb = (d['thumbnail']?? d['mediaUrl']?? d['videoUrl']?? '').toString();
+                          return GestureDetector(
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: reels))),
+                            onLongPress: () => _deletePost(doc.id, d),
+                            child: Stack(fit: StackFit.expand, children: [
+                              CachedNetworkImage(imageUrl: thumb, fit: BoxFit.cover),
+                              Container(color: Colors.black26),
+                              const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
+                              Positioned(
+                                top: 2,
+                                right: 2,
+                                child: GestureDetector(
+                                  onTap: () => _deletePost(doc.id, d),
+                                  child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.delete, size: 14, color: Colors.white)),
+                                ),
+                              ),
+                            ]),
+                          );
+                        },
+                      );
                     },
                   ),
                 ],
