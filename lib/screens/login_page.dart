@@ -3,7 +3,6 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'main_screen.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -22,6 +21,10 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _loginWithGmail() async {
     setState(() => _loading = true);
     try {
+      // FIX 1: Naya account banane ke liye pehle logout karo - isse account chooser ayega
+      await _googleSignIn.signOut();
+      await _auth.signOut();
+
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         setState(() => _loading = false);
@@ -38,30 +41,35 @@ class _LoginPageState extends State<LoginPage> {
       final User? user = userCred.user;
 
       if (user != null) {
-        // Firestore me save - delete kabhi nahi hoga
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'uid': user.uid,
-          'email': user.email,
-          'name': user.displayName,
-          'photo': user.photoURL,
-          'lastLogin': FieldValue.serverTimestamp(),
-          'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        // FIX 2: createdAt ko kabhi overwrite mat karo
+        DocumentReference userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
+        var snap = await userDoc.get();
+        
+        if (!snap.exists) {
+          await userDoc.set({
+            'uid': user.uid,
+            'email': user.email,
+            'name': user.displayName,
+            'photo': user.photoURL,
+            'createdAt': FieldValue.serverTimestamp(),
+            'lastLogin': FieldValue.serverTimestamp(),
+          });
+        } else {
+          await userDoc.set({
+            'email': user.email,
+            'name': user.displayName,
+            'photo': user.photoURL,
+            'lastLogin': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+        }
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('seenDemo', true);
         await prefs.setString('userEmail', user.email ?? "");
         await prefs.setString('userName', user.displayName ?? "");
         await prefs.setString('userPhoto', user.photoURL ?? "");
-        // isLoggedIn hata diya - ab Firebase Auth stream khud handle karega
-
-        if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => MainScreen()),
-            (route) => false,
-          );
-        }
+        
+        // FIX 3: Yahan Navigator push mat karo - main.dart ka StreamBuilder khud MainScreen pe le jayega
       }
     } catch (e) {
       if (mounted) {
