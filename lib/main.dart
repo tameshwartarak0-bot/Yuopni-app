@@ -17,7 +17,12 @@ void main() async {
     url: 'https://aynsnbgulloedotmjlcq.supabase.co',
     anonKey: 'sb_publishable_nFfjqpnLm5FUZD7GbVXlYw_X3vkM_sj',
   );
+
   final prefs = await SharedPreferences.getInstance();
+  // Pehli baar DemoPage dikhane ke liye false set kar rahe hain
+  // DemoPage dekhne ke baad is line ko hata dena
+  await prefs.setBool('seenDemo', false);
+
   bool seenDemo = prefs.getBool('seenDemo')?? false;
   runApp(YuopniApp(seenDemo: seenDemo));
 }
@@ -32,11 +37,13 @@ class YuopniApp extends StatefulWidget {
 class _YuopniAppState extends State<YuopniApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
   late AppLinks _appLinks;
+
   @override
   void initState() {
     super.initState();
     _initDeepLinks();
   }
+
   Future<void> _initDeepLinks() async {
     _appLinks = AppLinks();
     try {
@@ -45,6 +52,7 @@ class _YuopniAppState extends State<YuopniApp> {
     } catch (_) {}
     _appLinks.uriLinkStream.listen((uri) => _handleLink(uri));
   }
+
   void _handleLink(Uri uri) async {
     bool isOurLink = uri.host.contains("yuopni-1c5e9") || uri.scheme == "yuopni";
     if (!isOurLink) return;
@@ -58,12 +66,15 @@ class _YuopniAppState extends State<YuopniApp> {
       var doc = await FirebaseFirestore.instance.collection('posts').doc(videoId).get();
       if (!doc.exists || doc.data() == null) return;
       if (_navigatorKey.currentState!= null) {
-        _navigatorKey.currentState!.push(MaterialPageRoute(builder: (_) => ReelPage(myReels: [doc], initialIndex: 0)));
+        _navigatorKey.currentState!.push(
+          MaterialPageRoute(builder: (_) => ReelPage(myReels: [doc], initialIndex: 0)),
+        );
       }
     } catch (e) {
       debugPrint("DeepLink error: $e");
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -74,10 +85,19 @@ class _YuopniAppState extends State<YuopniApp> {
         stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.white)));
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator(color: Colors.white)),
+            );
           }
-          if (snapshot.hasData && snapshot.data!= null) return MainScreen();
-          if (!widget.seenDemo) return const DemoPage();
+          // 1. Agar login hai to MainScreen
+          if (snapshot.hasData && snapshot.data!= null) {
+            return MainScreen();
+          }
+          // 2. Agar pehli baar app khula hai to DemoPage
+          if (!widget.seenDemo) {
+            return const DemoPage();
+          }
+          // 3. Warna LoginPage
           return LoginPage();
         },
       ),
