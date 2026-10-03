@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'main_screen.dart'; // <-- CHANGE 1: yaha login_page ki jagah main_screen
+import 'package:firebase_auth/firebase_auth.dart';
+import 'main_screen.dart';
+import 'login_page.dart';
 
 class DemoPage extends StatefulWidget {
+  const DemoPage({super.key});
   @override
   _DemoPageState createState() => _DemoPageState();
 }
@@ -20,7 +23,16 @@ class _DemoPageState extends State<DemoPage> {
   void _finishDemo() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('seenDemo', true);
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => MainScreen())); // <-- CHANGE 2: LoginPage ki jagah MainScreen
+
+    if (!mounted) return;
+
+    // FIX: Check karo login hai ya nahi
+    final user = FirebaseAuth.instance.currentUser;
+    if (user!= null) {
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => MainScreen()), (route) => false);
+    } else {
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => LoginPage()), (route) => false);
+    }
   }
 
   @override
@@ -32,19 +44,19 @@ class _DemoPageState extends State<DemoPage> {
           controller: _controller,
           onPageChanged: (i) => setState(() => _current = i),
           itemCount: demos.length,
-          itemBuilder: (_, i) => Center(child: Padding(padding: EdgeInsets.all(30), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(demos[i]['icon']!, style: TextStyle(fontSize: 80)),
-            SizedBox(height: 20),
-            Text(demos[i]['title']!, style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-            SizedBox(height: 15),
-            Text(demos[i]['desc']!, style: TextStyle(fontSize: 16, color: Colors.grey), textAlign: TextAlign.center),
+          itemBuilder: (_, i) => Center(child: Padding(padding: const EdgeInsets.all(30), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Text(demos[i]['icon']!, style: const TextStyle(fontSize: 80)),
+            const SizedBox(height: 20),
+            Text(demos[i]['title']!, style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+            const SizedBox(height: 15),
+            Text(demos[i]['desc']!, style: const TextStyle(fontSize: 16, color: Colors.grey), textAlign: TextAlign.center),
           ]))),
         )),
-        Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(3, (i) => Container(margin: EdgeInsets.all(4), width: _current==i? 20:8, height: 8, decoration: BoxDecoration(color: _current==i? Colors.pink: Colors.white24, borderRadius: BorderRadius.circular(10))))),
-        Padding(padding: EdgeInsets.all(20), child: Row(children: [
-          TextButton(onPressed: _finishDemo, child: Text("Skip")),
-          Spacer(),
-          ElevatedButton(onPressed: (){ if(_current==2) _finishDemo(); else _controller.nextPage(duration: Duration(milliseconds: 300), curve: Curves.ease); }, style: ElevatedButton.styleFrom(backgroundColor: Colors.pink), child: Text(_current==2? "Start": "Next")),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: List.generate(3, (i) => Container(margin: const EdgeInsets.all(4), width: _current==i? 20:8, height: 8, decoration: BoxDecoration(color: _current==i? Colors.pink: Colors.white24, borderRadius: BorderRadius.circular(10))))),
+        Padding(padding: const EdgeInsets.all(20), child: Row(children: [
+          TextButton(onPressed: _finishDemo, child: const Text("Skip", style: TextStyle(color: Colors.white))),
+          const Spacer(),
+          ElevatedButton(onPressed: (){ if(_current==2) _finishDemo(); else _controller.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.ease); }, style: ElevatedButton.styleFrom(backgroundColor: Colors.pink), child: Text(_current==2? "Start": "Next")),
         ])),
       ]),
     );
