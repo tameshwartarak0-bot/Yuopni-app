@@ -17,8 +17,12 @@ void main() async {
     url: 'https://aynsnbgulloedotmjlcq.supabase.co',
     anonKey: 'sb_publishable_nFfjqpnLm5FUZD7GbVXlYw_X3vkM_sj',
   );
+
   final prefs = await SharedPreferences.getInstance();
-  bool seenDemo = prefs.getBool('seenDemo') ?? false;
+  // Agar demo dobara dekhna hai to ek baar ye line uncomment karke run karo
+  // await prefs.setBool('seenDemo', false);
+
+  bool seenDemo = prefs.getBool('seenDemo')?? false;
   runApp(YuopniApp(seenDemo: seenDemo));
 }
 
@@ -43,7 +47,7 @@ class _YuopniAppState extends State<YuopniApp> {
     _appLinks = AppLinks();
     try {
       final uri = await _appLinks.getInitialLink();
-      if (uri != null) _handleLink(uri);
+      if (uri!= null) _handleLink(uri);
     } catch (_) {}
     _appLinks.uriLinkStream.listen((uri) => _handleLink(uri));
   }
@@ -51,25 +55,18 @@ class _YuopniAppState extends State<YuopniApp> {
   void _handleLink(Uri uri) async {
     bool isOurLink = uri.host.contains("yuopni-1c5e9") || uri.scheme == "yuopni";
     if (!isOurLink) return;
-
     String? videoId = uri.queryParameters['id']?.trim();
     if (videoId == null || videoId.isEmpty) return;
-
     for (int i = 0; i < 20; i++) {
-      if (_navigatorKey.currentState != null) break;
+      if (_navigatorKey.currentState!= null) break;
       await Future.delayed(const Duration(milliseconds: 300));
     }
-
     try {
-      debugPrint("Yuopni Link Opened: $videoId");
       var doc = await FirebaseFirestore.instance.collection('posts').doc(videoId).get();
       if (!doc.exists || doc.data() == null) return;
-
-      if (_navigatorKey.currentState != null) {
+      if (_navigatorKey.currentState!= null) {
         _navigatorKey.currentState!.push(
-          MaterialPageRoute(
-            builder: (_) => ReelPage(myReels: [doc], initialIndex: 0),
-          ),
+          MaterialPageRoute(builder: (_) => ReelPage(myReels: [doc], initialIndex: 0)),
         );
       }
     } catch (e) {
@@ -83,25 +80,25 @@ class _YuopniAppState extends State<YuopniApp> {
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-      // --- YAHI PURA FIX HAI ---
       home: StreamBuilder<fb_auth.User?>(
         stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
-                body: Center(child: CircularProgressIndicator(color: Colors.white)));
+              body: Center(child: CircularProgressIndicator(color: Colors.white)),
+            );
           }
-          // 1. Agar user login hai -> Direct MainScreen
-          if (snapshot.hasData && snapshot.data != null) {
+
+          // 1. Login hai to direct MainScreen
+          if (snapshot.hasData && snapshot.data!= null) {
             return MainScreen();
           }
-          
-          // 2. Agar login nahi hai
-          // Pehli baar hai to DemoPage dikhao, nahi to LoginPage (jo screenshot wala hai)
+
+          // 2. Login nahi hai
           if (!widget.seenDemo) {
-            return DemoPage();
+            return DemoPage(); // Pehli baar Demo
           } else {
-            return LoginPage();
+            return LoginPage(); // Dusri baar se Login (wahi screenshot wala)
           }
         },
       ),
