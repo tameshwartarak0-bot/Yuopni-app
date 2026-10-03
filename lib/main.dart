@@ -18,12 +18,11 @@ void main() async {
     anonKey: 'sb_publishable_nFfjqpnLm5FUZD7GbVXlYw_X3vkM_sj',
   );
 
+  // FORCE RESET - Ab har baar DemoPage hi khulega
   final prefs = await SharedPreferences.getInstance();
-  // Agar demo dobara dekhna hai to ek baar ye line uncomment karke run karo
-  // await prefs.setBool('seenDemo', false);
+  await prefs.setBool('seenDemo', false); // <--- Ye line add ki hai
 
-  bool seenDemo = prefs.getBool('seenDemo')?? false;
-  runApp(YuopniApp(seenDemo: seenDemo));
+  runApp(YuopniApp(seenDemo: false));
 }
 
 class YuopniApp extends StatefulWidget {
@@ -84,22 +83,13 @@ class _YuopniAppState extends State<YuopniApp> {
         stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator(color: Colors.white)),
-            );
+            return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.white)));
           }
-
-          // 1. Login hai to direct MainScreen
           if (snapshot.hasData && snapshot.data!= null) {
             return MainScreen();
           }
-
-          // 2. Login nahi hai
-          if (!widget.seenDemo) {
-            return DemoPage(); // Pehli baar Demo
-          } else {
-            return LoginPage(); // Dusri baar se Login (wahi screenshot wala)
-          }
+          // Ab ye hamesha DemoPage dikhayega
+          return DemoPage();
         },
       ),
     );
