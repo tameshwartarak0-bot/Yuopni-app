@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'demo_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -21,30 +22,23 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _loginWithGmail() async {
     setState(() => _loading = true);
     try {
-      // FIX 1: Naya account banane ke liye pehle logout karo - isse account chooser ayega
       await _googleSignIn.signOut();
       await _auth.signOut();
-
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         setState(() => _loading = false);
         return;
       }
-
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-
       final UserCredential userCred = await _auth.signInWithCredential(credential);
       final User? user = userCred.user;
-
       if (user != null) {
-        // FIX 2: createdAt ko kabhi overwrite mat karo
         DocumentReference userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
         var snap = await userDoc.get();
-        
         if (!snap.exists) {
           await userDoc.set({
             'uid': user.uid,
@@ -62,14 +56,8 @@ class _LoginPageState extends State<LoginPage> {
             'lastLogin': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
         }
-
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('seenDemo', true);
-        await prefs.setString('userEmail', user.email ?? "");
-        await prefs.setString('userName', user.displayName ?? "");
-        await prefs.setString('userPhoto', user.photoURL ?? "");
-        
-        // FIX 3: Yahan Navigator push mat karo - main.dart ka StreamBuilder khud MainScreen pe le jayega
       }
     } catch (e) {
       if (mounted) {
@@ -79,6 +67,17 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _resetDemo() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('seenDemo', false);
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const DemoPage()),
+      (r) => false,
+    );
   }
 
   @override
@@ -101,10 +100,7 @@ class _LoginPageState extends State<LoginPage> {
                   : SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        icon: Image.network(
-                          "https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg",
-                          height: 20,
-                        ),
+                        icon: Image.network("https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg", height: 20),
                         label: const Text("Continue with Gmail", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.white,
@@ -116,11 +112,13 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                     ),
               const SizedBox(height: 20),
-              const Text(
-                "Tumhara data Firestore me safe rahega\nApp band karne par bhi delete nahi hoga",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 11, color: Colors.grey),
-              ),
+              const Text("Tumhara data Firestore me safe rahega\nApp band karne par bhi delete nahi hoga", textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: Colors.grey)),
+              const SizedBox(height: 30),
+              // SIRF DEMO BUTTON
+              TextButton(
+                onPressed: _resetDemo,
+                child: const Text("DEMO", style: TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 2)),
+              )
             ],
           ),
         ),
