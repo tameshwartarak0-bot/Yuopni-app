@@ -2,15 +2,21 @@ name: Build Yuopni APK
 on:
   push:
     branches: [ master ]
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
+          
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.29.3'
@@ -32,8 +38,20 @@ jobs:
         run: keytool -list -v -keystore android/app/upload-keystore.jks -alias yuopni -storepass yuopni123 | grep SHA1
 
       - run: flutter pub get
-      - run: flutter build apk --release
-      - uses: actions/upload-artifact@v4
+      - run: flutter build apk --release --split-per-abi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: yuopni-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
+          name: yuopni-apk-${{ github.run_number }}
+          path: build/app/outputs/flutter-apk/app-*.apk
+          retention-days: 7
+
+      # --- YE NAYA STEP HAI - Purane builds delete karega ---
+      - name: Delete old builds - Keep only last 4
+        uses: Mattraks/delete-workflow-runs@v2
+        with:
+          token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 4
