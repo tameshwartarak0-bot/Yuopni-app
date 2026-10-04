@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'demo_page.dart';
+import 'phone_login_page.dart'; // <-- NAYA IMPORT
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -93,28 +94,55 @@ class _LoginPageState extends State<LoginPage> {
               const Icon(Icons.play_circle_fill, size: 100, color: Colors.pink),
               const SizedBox(height: 20),
               const Text("Yuopni", style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.white)),
-              const Text("Real Gmail Login - Firebase Secure", style: TextStyle(color: Colors.grey)),
+              const Text("Real Gmail + Mobile Login - Firebase Secure", style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 50),
               _loading
                   ? const CircularProgressIndicator(color: Colors.pink)
-                  : SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: Image.network("https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg", height: 20),
-                        label: const Text("Continue with Gmail", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(vertical: 15),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                  : Column(
+                    children: [
+                      // GMAIL BUTTON
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          icon: Image.network("https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg", height: 20),
+                          label: const Text("Continue with Gmail", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          ),
+                          onPressed: _loginWithGmail,
                         ),
-                        onPressed: _loginWithGmail,
                       ),
-                    ),
+                      const SizedBox(height: 15),
+                      const Row(children: [
+                        Expanded(child: Divider(color: Colors.white24)),
+                        Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text("OR", style: TextStyle(color: Colors.grey))),
+                        Expanded(child: Divider(color: Colors.white24)),
+                      ]),
+                      const SizedBox(height: 15),
+                      // PHONE BUTTON - NAYA
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.phone_android, color: Colors.white),
+                          label: const Text("Continue with Mobile Number", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            side: const BorderSide(color: Colors.white),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          ),
+                          onPressed: () {
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => const PhoneLoginPage()));
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
               const SizedBox(height: 20),
               const Text("Tumhara data Firestore me safe rahega\nApp band karne par bhi delete nahi hoga", textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: Colors.grey)),
               const SizedBox(height: 30),
-              // SIRF DEMO BUTTON
               TextButton(
                 onPressed: _resetDemo,
                 child: const Text("DEMO", style: TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 2)),
