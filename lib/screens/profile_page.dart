@@ -64,14 +64,13 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  // --- YEH NAYA DELETE FUNCTION HAI ---
   Future<void> _deletePost(String postId, Map<String, dynamic> data) async {
     bool? confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text("Delete kare?", style: TextStyle(color: Colors.white)),
-        content: const Text("Ye post hamesha ke liye delete ho jayegi.", style: TextStyle(color: Colors.grey)),
+        backgroundColor: Colors.white,
+        title: const Text("Delete kare?", style: TextStyle(color: Colors.black)),
+        content: const Text("Ye post hamesha ke liye delete ho jayegi.", style: TextStyle(color: Colors.black54)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
@@ -81,8 +80,7 @@ class _ProfilePageState extends State<ProfilePage> {
     if (confirm!= true) return;
     try {
       await FirebaseFirestore.instance.collection('posts').doc(postId).delete();
-      // Agar Supabase path save hai to file bhi delete
-      if (data['videoPath']!= null) {
+      if (data['videoPath']!= null && data['videoPath'].toString().isNotEmpty) {
         try {
           await Supabase.instance.client.storage.from('videos').remove([data['videoPath']]);
         } catch (_) {}
@@ -130,18 +128,41 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  List<QueryDocumentSnapshot> _sortDocs(List<QueryDocumentSnapshot> docs){
-    docs.sort((a,b){
-      var da = (a.data() as Map<String,dynamic>);
-      var db = (b.data() as Map<String,dynamic>);
+  List<QueryDocumentSnapshot> _sortDocs(List<QueryDocumentSnapshot> docs) {
+    docs.sort((a, b) {
+      var da = (a.data() as Map<String, dynamic>);
+      var db = (b.data() as Map<String, dynamic>);
       Timestamp? ta = da['createdAt'] is Timestamp? da['createdAt'] : da['timestamp'] is Timestamp? da['timestamp'] : null;
       Timestamp? tb = db['createdAt'] is Timestamp? db['createdAt'] : db['timestamp'] is Timestamp? db['timestamp'] : null;
-      if(ta==null && tb==null) return 0;
-      if(ta==null) return 1;
-      if(tb==null) return -1;
+      if (ta == null && tb == null) return 0;
+      if (ta == null) return 1;
+      if (tb == null) return -1;
       return tb.compareTo(ta);
     });
     return docs;
+  }
+
+  // VIDEO AUR IMAGE DONO VISIBLE
+  Widget _buildMedia(String url) {
+    bool isVideoFile = url.toLowerCase().contains('.mp4');
+    if (url.isEmpty) {
+      return Container(color: Colors.grey[300], child: const Center(child: Icon(Icons.videocam, color: Colors.black54, size: 28)));
+    }
+    if (isVideoFile) {
+      return Container(
+        color: Colors.black,
+        child: Stack(fit: StackFit.expand, children: [
+          Container(color: Colors.grey[900]),
+          const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 36)),
+        ]),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      fit: BoxFit.cover,
+      placeholder: (_, __) => Container(color: Colors.grey[300], child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))),
+      errorWidget: (_, __, ___) => Container(color: Colors.grey[900], child: const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 30))),
+    );
   }
 
   @override
@@ -170,15 +191,17 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 5),
             Text("${savedAccounts.length} account saved", style: const TextStyle(fontSize: 11, color: Colors.grey)),
             const SizedBox(height: 10),
-            const TabBar(labelColor: Colors.black, tabs: [Tab(icon: Icon(Icons.grid_on), text: "Posts"), Tab(icon: Icon(Icons.video_library), text: "Reels")]),
+            const TabBar(labelColor: Colors.black, unselectedLabelColor: Colors.grey, indicatorColor: Colors.black, indicatorWeight: 3, tabs: [Tab(icon: Icon(Icons.grid_on), text: "Posts"), Tab(icon: Icon(Icons.video_library), text: "Reels")]),
+            const Divider(height: 1, color: Colors.black12),
             Expanded(
               child: TabBarView(
                 children: [
+                  // POSTS TAB
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).snapshots(),
                     builder: (c, snap) {
-                      if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                      if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.black)));
+                      if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.black));
+                      if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)));
                       var docs = _sortDocs(snap.data!.docs);
                       return GridView.builder(
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
@@ -186,37 +209,30 @@ class _ProfilePageState extends State<ProfilePage> {
                         itemBuilder: (_, i) {
                           var doc = docs[i];
                           var d = doc.data() as Map<String, dynamic>;
-                          String url = (d['mediaUrl']?? d['imageUrl']?? d['videoUrl']?? '').toString();
-                          bool isVideo = d['isVideo']==true || url.contains('.mp4');
+                          String url = (d['mediaUrl']?? d['imageUrl']?? d['videoUrl']?? d['thumbnail']?? '').toString();
+                          bool isVideo = d['isVideo'] == true || url.toLowerCase().contains('.mp4') || d['videoUrl']!= null;
                           return GestureDetector(
-                            onTap: isVideo? () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: docs.where((e) => (e.data() as Map)['isVideo']==true || (e.data() as Map)['mediaUrl'].toString().contains('.mp4')).toList()))) : null,
-                            // Long press pe delete
-                            onLongPress: () => _deletePost(doc.id, d),
+                            onTap: () {
+                              if (isVideo) Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: docs)));
+                            },
                             child: Stack(fit: StackFit.expand, children: [
-                              CachedNetworkImage(imageUrl: url, fit: BoxFit.cover),
-                              if(isVideo) const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
-                              // Delete icon sirf owner ke liye - top right
-                              Positioned(
-                                top: 2,
-                                right: 2,
-                                child: GestureDetector(
-                                  onTap: () => _deletePost(doc.id, d),
-                                  child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.delete, size: 14, color: Colors.white)),
-                                ),
-                              ),
+                              _buildMedia(url),
+                              if (isVideo) Container(color: Colors.black26),
+                              Positioned(top: 4, right: 4, child: InkWell(onTap: () => _deletePost(doc.id, d), child: Container(padding: const EdgeInsets.all(5), decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle), child: const Icon(Icons.delete, size: 14, color: Colors.white)))),
                             ]),
                           );
                         },
                       );
                     },
                   ),
+                  // REELS TAB
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).snapshots(),
                     builder: (c, snap) {
-                      if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                      if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.black));
                       var all = _sortDocs(snap.data!.docs);
-                      var reels = all.where((doc){ var d = doc.data() as Map<String,dynamic>; var url = (d['mediaUrl']?? d['videoUrl']?? '').toString(); return d['isVideo']==true || url.toLowerCase().contains('.mp4'); }).toList();
-                      if (reels.isEmpty) return const Center(child: Text("Abhi koi Reel nahi", style: TextStyle(color: Colors.black)));
+                      var reels = all.where((doc) { var d = doc.data() as Map<String, dynamic>; var url = (d['mediaUrl']?? d['videoUrl']?? '').toString(); return d['isVideo'] == true || url.toLowerCase().contains('.mp4') || d['videoUrl']!= null; }).toList();
+                      if (reels.isEmpty) return const Center(child: Text("Abhi koi Reel nahi", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)));
                       return GridView.builder(
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
                         itemCount: reels.length,
@@ -226,19 +242,11 @@ class _ProfilePageState extends State<ProfilePage> {
                           String thumb = (d['thumbnail']?? d['mediaUrl']?? d['videoUrl']?? '').toString();
                           return GestureDetector(
                             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: reels))),
-                            onLongPress: () => _deletePost(doc.id, d),
                             child: Stack(fit: StackFit.expand, children: [
-                              CachedNetworkImage(imageUrl: thumb, fit: BoxFit.cover),
+                              _buildMedia(thumb),
                               Container(color: Colors.black26),
-                              const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30)),
-                              Positioned(
-                                top: 2,
-                                right: 2,
-                                child: GestureDetector(
-                                  onTap: () => _deletePost(doc.id, d),
-                                  child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.delete, size: 14, color: Colors.white)),
-                                ),
-                              ),
+                              const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 32)),
+                              Positioned(top: 4, right: 4, child: InkWell(onTap: () => _deletePost(doc.id, d), child: Container(padding: const EdgeInsets.all(5), decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle), child: const Icon(Icons.delete, size: 14, color: Colors.white)))),
                             ]),
                           );
                         },
