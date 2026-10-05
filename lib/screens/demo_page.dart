@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'main_screen.dart';
-import 'login_page.dart';
 
 class DemoPage extends StatefulWidget {
   const DemoPage({super.key});
@@ -25,20 +23,12 @@ class _DemoPageState extends State<DemoPage> {
     await prefs.setBool('seenDemo', true);
     if (!mounted) return;
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user!= null) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => MainScreen()),
-        (route) => false
-      );
-    } else {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => LoginPage()),
-        (route) => false
-      );
-    }
+    // FIX: Chahe login ho ya na ho, hamesha MainScreen khulega
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => MainScreen()),
+      (route) => false
+    );
   }
 
   @override
