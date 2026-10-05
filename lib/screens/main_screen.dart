@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import '../global.dart';
 import 'home_page.dart';
 import 'reel_page.dart';
 import 'message_page.dart';
 import 'profile_page.dart';
+import 'login_page.dart';
 import '../widgets/create_sheet.dart';
 import 'search_page.dart';
 import 'notification_page.dart';
@@ -15,8 +17,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _index = 0;
-  DateTime? _lastBackPress; // Double back ke liye
-  final pages = [HomePage(), ReelPage(), MessagePage(), ProfilePage()];
+  DateTime? _lastBackPress;
 
   void _onTap(int i) {
     if (i == 1) {
@@ -26,15 +27,11 @@ class _MainScreenState extends State<MainScreen> {
     setState(() => _index = i > 1 ? i - 1 : i);
   }
 
-  // Yahi logic back button ko control karega
   Future<bool> _onWillPop() async {
-    // 1. Agar Home par nahi ho, to pehle Home par lao, app band mat karo
     if (_index != 0) {
       setState(() => _index = 0);
       return false;
     }
-
-    // 2. Agar Home par ho to Double Back Press se band hoga
     if (_lastBackPress == null || DateTime.now().difference(_lastBackPress!) > Duration(seconds: 2)) {
       _lastBackPress = DateTime.now();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -44,14 +41,37 @@ class _MainScreenState extends State<MainScreen> {
           backgroundColor: Colors.white24,
         ),
       );
-      return false; // App band nahi hoga
+      return false;
     }
-    return true; // Ab app band hoga
+    return true;
+  }
+
+  // Profile ke liye alag widget - Login check yahi hoga
+  Widget _buildProfileTab() {
+    return StreamBuilder<fb_auth.User?>(
+      stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: Colors.white));
+        }
+        if (snapshot.hasData && snapshot.data != null) {
+          return ProfilePage(); // Login hai to Profile
+        }
+        return LoginPage(); // Login nahi hai to Login Page
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // WillPopScope se back button ka control milta hai
+    // Pages ab yahan define kiye taaki Profile me login check ho sake
+    final pages = [
+      HomePage(),
+      ReelPage(),
+      MessagePage(),
+      _buildProfileTab(), // 4th page = Profile with Login logic
+    ];
+
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
