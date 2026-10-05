@@ -6,9 +6,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
-import '../widgets/login_dialog.dart';
 import 'reel_page.dart';
-import 'login_page.dart';
+import 'demo_page.dart'; // Demo ke liye add kiya
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -50,6 +49,7 @@ class _ProfilePageState extends State<ProfilePage> {
     await prefs.setString('yuopni_saved_accounts', jsonEncode(savedAccounts));
   }
 
+  // LOGOUT -> DEMO PAGE
   Future<void> _logout() async {
     await _saveCurrentAccount();
     await GoogleSignIn().signOut();
@@ -59,8 +59,14 @@ class _ProfilePageState extends State<ProfilePage> {
     await prefs.remove('userName');
     await prefs.remove('userPhoto');
     await prefs.remove('isLoggedIn');
+    await prefs.setBool('seenDemo', false); // Demo dubara dikhega
+
     if (mounted) {
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginPage()), (route) => false);
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const DemoPage()),
+        (route) => false,
+      );
     }
   }
 
@@ -112,7 +118,7 @@ class _ProfilePageState extends State<ProfilePage> {
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-           ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+          ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
                   leading: acc['photo']!= ""? CircleAvatar(backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(child: Text(acc['name'][0])),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
                   subtitle: Text(acc['email']),
@@ -142,7 +148,6 @@ class _ProfilePageState extends State<ProfilePage> {
     return docs;
   }
 
-  // VIDEO AUR IMAGE DONO VISIBLE
   Widget _buildMedia(String url) {
     bool isVideoFile = url.toLowerCase().contains('.mp4');
     if (url.isEmpty) {
@@ -168,10 +173,6 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const CircleAvatar(radius: 50, child: Icon(Icons.person, size: 50)), const SizedBox(height: 10), const Text("Login karke apna profile dekho", style: TextStyle(color: Colors.black)), const SizedBox(height: 10), ElevatedButton(onPressed: () => showDialog(context: context, builder: (_) => const LoginDialog()), child: const Text("Login"))]));
-    }
-
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -180,12 +181,12 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             const SizedBox(height: 40),
             Stack(children: [
-              CircleAvatar(radius: 45, backgroundColor: Colors.deepOrange, backgroundImage: user.photoURL!= null? NetworkImage(user.photoURL!) : null, child: user.photoURL == null? Text((user.displayName?? "T")[0].toUpperCase(), style: const TextStyle(fontSize: 30, color: Colors.white)) : null),
+              CircleAvatar(radius: 45, backgroundColor: Colors.deepOrange, backgroundImage: user?.photoURL!= null? NetworkImage(user!.photoURL!) : null, child: user?.photoURL == null? Text((user?.displayName?? "T")[0].toUpperCase(), style: const TextStyle(fontSize: 30, color: Colors.white)) : null),
               Positioned(bottom: 0, right: 0, child: GestureDetector(onTap: _switchAccountDialog, child: const CircleAvatar(radius: 12, backgroundColor: Colors.black, child: Icon(Icons.switch_account, size: 14, color: Colors.white))))
             ]),
             const SizedBox(height: 10),
-            Text(user.displayName?? "Yuopni User", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
-            Text(user.email?? "", style: const TextStyle(color: Colors.grey)),
+            Text(user?.displayName?? "Yuopni User", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
+            Text(user?.email?? "", style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 10),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [ElevatedButton(onPressed: _switchAccountDialog, child: const Text("Switch Account")), const SizedBox(width: 10), ElevatedButton(onPressed: _logout, style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white), child: const Text("Logout"))]),
             const SizedBox(height: 5),
@@ -196,9 +197,8 @@ class _ProfilePageState extends State<ProfilePage> {
             Expanded(
               child: TabBarView(
                 children: [
-                  // POSTS TAB
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).snapshots(),
+                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user?.uid).snapshots(),
                     builder: (c, snap) {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.black));
                       if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)));
@@ -225,9 +225,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       );
                     },
                   ),
-                  // REELS TAB
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user.uid).snapshots(),
+                    stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user?.uid).snapshots(),
                     builder: (c, snap) {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.black));
                       var all = _sortDocs(snap.data!.docs);
