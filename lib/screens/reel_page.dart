@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
+import 'main_screen.dart'; // pauseReelsNotifier ke liye
 
 class ReelPage extends StatefulWidget {
   final int initialIndex;
@@ -14,6 +15,22 @@ class ReelPage extends StatefulWidget {
 }
 
 class _ReelPageState extends State<ReelPage> {
+  late PageController _pageController;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.myReels!= null && widget.myReels!.isNotEmpty) {
@@ -21,7 +38,8 @@ class _ReelPageState extends State<ReelPage> {
         backgroundColor: Colors.black,
         body: PageView.builder(
           scrollDirection: Axis.vertical,
-          controller: PageController(initialPage: widget.initialIndex),
+          controller: _pageController,
+          onPageChanged: (i) => setState(() => _currentIndex = i),
           itemCount: widget.myReels!.length,
           itemBuilder: (c, i) {
             var doc = widget.myReels![i];
@@ -30,6 +48,7 @@ class _ReelPageState extends State<ReelPage> {
               docId: doc.id,
               data: data,
               showBack: true,
+              isActive: i == _currentIndex,
             );
           },
         ),
@@ -48,11 +67,14 @@ class _ReelPageState extends State<ReelPage> {
           var docs = snap.data!.docs;
           return PageView.builder(
             scrollDirection: Axis.vertical,
+            controller: _pageController,
+            onPageChanged: (i) => setState(() => _currentIndex = i),
             itemCount: docs.length,
             itemBuilder: (c, i) => ReelItem(
               docId: docs[i].id,
               data: docs[i].data() as Map<String, dynamic>,
               showBack: false,
+              isActive: i == _currentIndex,
             ),
           );
         },
@@ -65,7 +87,8 @@ class ReelItem extends StatefulWidget {
   final String docId;
   final Map<String, dynamic> data;
   final bool showBack;
-  const ReelItem({super.key, required this.docId, required this.data, this.showBack = false});
+  final bool isActive;
+  const ReelItem({super.key, required this.docId, required this.data, this.showBack = false, this.isActive = true});
   @override
   State<ReelItem> createState() => _ReelItemState();
 }
@@ -89,12 +112,12 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
 
     if (url.isNotEmpty && url.contains('http')) {
       _ctrl = VideoPlayerController.networkUrl(Uri.parse(url))
-   ..initialize().then((_) {
+  ..initialize().then((_) {
           if (mounted) {
             setState(() => _isInit = true);
             _ctrl!.setLooping(true);
             _ctrl!.setVolume(1.0);
-            _ctrl!.play();
+            if (widget.isActive &&!pauseReelsNotifier.value) _ctrl!.play();
           }
         }).catchError((e) {
           if (mounted) setState(() => _isError = true);
@@ -102,10 +125,38 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     } else {
       _isError = true;
     }
+
+    pauseReelsNotifier.addListener(_handleGlobalPause);
   }
 
   @override
-  void dispose() { _ctrl?.dispose(); super.dispose(); }
+  void didUpdateWidget(covariant ReelItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Scroll se active/inactive hua to play/pause
+    if (oldWidget.isActive!= widget.isActive) {
+      if (widget.isActive &&!pauseReelsNotifier.value) {
+        _ctrl?.play();
+      } else {
+        _ctrl?.pause();
+      }
+    }
+  }
+
+  void _handleGlobalPause() {
+    if (!mounted || _ctrl == null ||!_isInit) return;
+    if (pauseReelsNotifier.value) {
+      _ctrl!.pause();
+    } else {
+      if (widget.isActive) _ctrl!.play();
+    }
+  }
+
+  @override
+  void dispose() {
+    pauseReelsNotifier.removeListener(_handleGlobalPause);
+    _ctrl?.dispose();
+    super.dispose();
+  }
 
   void _toggleLike() async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
@@ -148,7 +199,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
       child: Stack(fit: StackFit.expand, children: [
         _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 50))
         : _isInit && _ctrl!= null
-     ? GestureDetector(onTap: (){
+    ? GestureDetector(onTap: (){
               setState((){
                 if(_ctrl!.value.isPlaying){ _ctrl!.pause(); }
                 else { _ctrl!.play(); }
