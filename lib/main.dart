@@ -32,11 +32,13 @@ class YuopniApp extends StatefulWidget {
 class _YuopniAppState extends State<YuopniApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
   late AppLinks _appLinks;
+
   @override
   void initState() {
     super.initState();
     _initDeepLinks();
   }
+
   Future<void> _initDeepLinks() async {
     _appLinks = AppLinks();
     try {
@@ -45,6 +47,7 @@ class _YuopniAppState extends State<YuopniApp> {
     } catch (_) {}
     _appLinks.uriLinkStream.listen((uri) => _handleLink(uri));
   }
+
   void _handleLink(Uri uri) async {
     bool isOurLink = uri.host.contains("yuopni-1c5e9") || uri.scheme == "yuopni";
     if (!isOurLink) return;
@@ -64,28 +67,20 @@ class _YuopniAppState extends State<YuopniApp> {
       debugPrint("DeepLink error: $e");
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
+      // AB LOGIN CHECK YAHAN SE HATA DIYA
       home: Builder(builder: (context) {
-        // SABSE PEHLE DEMO CHECK - LOGIN SE BHI PEHLE
         if (!widget.seenDemo) {
           return const DemoPage();
         }
-        // Uske baad login check
-        return StreamBuilder<fb_auth.User?>(
-          stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.white)));
-            }
-            if (snapshot.hasData && snapshot.data!= null) return MainScreen();
-            return LoginPage();
-          },
-        );
+        // Chahe user login ho ya na ho, sidha MainScreen khulega
+        return MainScreen();
       }),
     );
   }
