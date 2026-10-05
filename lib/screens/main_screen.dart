@@ -10,6 +10,9 @@ import '../widgets/create_sheet.dart';
 import 'search_page.dart';
 import 'notification_page.dart';
 
+// GLOBAL - Reel ko pause karne ke liye
+ValueNotifier<bool> pauseReelsNotifier = ValueNotifier(false);
+
 class MainScreen extends StatefulWidget {
   @override
   _MainScreenState createState() => _MainScreenState();
@@ -21,15 +24,25 @@ class _MainScreenState extends State<MainScreen> {
 
   void _onTap(int i) {
     if (i == 1) {
-      showModalBottomSheet(context: context, backgroundColor: Colors.black, builder: (_) => CreateSheet());
+      pauseReelsNotifier.value = true; // Reel ka audio band
+      showModalBottomSheet(
+        context: context,
+        backgroundColor: Colors.black,
+        builder: (_) => CreateSheet()
+      ).whenComplete(() {
+        pauseReelsNotifier.value = false; // Sheet band to wapas play
+      });
       return;
     }
+    // Reel tab se hat rahe ho to bhi pause
+    pauseReelsNotifier.value = (i != 2);
     setState(() => _index = i > 1 ? i - 1 : i);
   }
 
   Future<bool> _onWillPop() async {
     if (_index != 0) {
       setState(() => _index = 0);
+      pauseReelsNotifier.value = true;
       return false;
     }
     if (_lastBackPress == null || DateTime.now().difference(_lastBackPress!) > Duration(seconds: 2)) {
@@ -46,7 +59,6 @@ class _MainScreenState extends State<MainScreen> {
     return true;
   }
 
-  // Profile ke liye alag widget - Login check yahi hoga
   Widget _buildProfileTab() {
     return StreamBuilder<fb_auth.User?>(
       stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
@@ -55,21 +67,20 @@ class _MainScreenState extends State<MainScreen> {
           return const Center(child: CircularProgressIndicator(color: Colors.white));
         }
         if (snapshot.hasData && snapshot.data != null) {
-          return ProfilePage(); // Login hai to Profile
+          return ProfilePage();
         }
-        return LoginPage(); // Login nahi hai to Login Page
+        return LoginPage();
       },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Pages ab yahan define kiye taaki Profile me login check ho sake
     final pages = [
       HomePage(),
       ReelPage(),
       MessagePage(),
-      _buildProfileTab(), // 4th page = Profile with Login logic
+      _buildProfileTab(),
     ];
 
     return WillPopScope(
