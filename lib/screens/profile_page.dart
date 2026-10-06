@@ -123,10 +123,19 @@ class _ProfilePageState extends State<ProfilePage> {
     if(mounted) setState((){});
   }
 
+  Future<void> _removeAccount(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    savedAccounts.removeWhere((a) => a['uid'] == uid);
+    await prefs.setString('yuopni_saved_accounts', jsonEncode(savedAccounts));
+    setState((){});
+  }
+
+  // BINA LOGOUT HUYE NAYA ACCOUNT ADD / LOGIN
   Future<void> _addNewAccountDialog({bool isLogin = false}) async {
     TextEditingController emailCtrl = TextEditingController();
     TextEditingController passCtrl = TextEditingController();
     bool loadingDialog = false;
+    bool sendingReset = false;
 
     showDialog(
       context: context,
@@ -136,11 +145,35 @@ class _ProfilePageState extends State<ProfilePage> {
           backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           title: Text(isLogin? "Existing Account Login" : "Add New Account", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             TextField(controller: emailCtrl, style: TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Email", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
             SizedBox(height: 10),
             TextField(controller: passCtrl, obscureText: true, style: TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Password", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
-            if(loadingDialog) Padding(padding: EdgeInsets.only(top: 15), child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2)),
+            if(isLogin)...[
+              SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: sendingReset? SizedBox(height:16,width:16,child:CircularProgressIndicator(strokeWidth:2)) :
+                TextButton(
+                  onPressed: () async {
+                    if(emailCtrl.text.trim().isEmpty){
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Pehle email likho"), backgroundColor: Colors.red));
+                      return;
+                    }
+                    setDialogState(()=> sendingReset = true);
+                    try{
+                      await FirebaseAuth.instance.sendPasswordResetEmail(email: emailCtrl.text.trim());
+                      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Reset link bhej diya ${emailCtrl.text.trim()} pe"), backgroundColor: Colors.green));
+                    }catch(e){
+                      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+                    }
+                    setDialogState(()=> sendingReset = false);
+                  },
+                  child: Text("Forgot Password?", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13)),
+                ),
+              ),
+            ],
+            if(loadingDialog) Padding(padding: EdgeInsets.only(top: 15), child: Center(child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: TextStyle(color: Colors.black))),
@@ -174,7 +207,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   }
                   await tempApp.delete();
 
-                  // FIXED: signOut hata diya, direct signIn - fail hoga to purana account rahega
+                  // FIX: signOut hata diya, direct signIn - fail hua to purana account safe rahega
                   await FirebaseAuth.instance.signInWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
 
                   if(mounted){
@@ -186,9 +219,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 } catch(e){
                   setDialogState(()=> loadingDialog = false);
                   String msg = e.toString();
-                  if(msg.contains("wrong-password")) msg = "Wrong password";
-                  if(msg.contains("user-not-found")) msg = "User not found";
-                  if(msg.contains("email-already")) msg = "Email already exists - Log into existing pe jao";
+                  if(msg.toLowerCase().contains("wrong-password") || msg.toLowerCase().contains("invalid-credential")) msg = "Wrong password";
+                  if(msg.toLowerCase().contains("user-not-found")) msg = "Account nahi mila";
+                  if(msg.toLowerCase().contains("email-already")) msg = "Email pehle se hai - 'Log into existing' use karo";
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
                 }
               },
@@ -202,40 +235,61 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _switchToAccount(Map<String,dynamic> acc) async {
     TextEditingController passCtrl = TextEditingController();
+    bool sendingReset = false;
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.white,
-        title: Text("Switch to ${acc['name']}", style: TextStyle(color: Colors.black, fontSize: 15, fontWeight: FontWeight.bold)),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text("Enter password for ${acc['email']}", style: TextStyle(color: Colors.grey, fontSize: 12)),
-          SizedBox(height: 10),
-          TextField(controller: passCtrl, obscureText: true, style: TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Password", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
-        ]),
-        actions: [
-          TextButton(onPressed: ()=> Navigator.pop(context), child: Text("Cancel")),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
-            onPressed: () async {
-              Navigator.pop(context);
-              try {
-                await _saveCurrentAccount();
-                // FIXED: Yahan signOut bilkul nahi karna, direct login karo
-                await FirebaseAuth.instance.signInWithEmailAndPassword(email: acc['email'], password: passCtrl.text.trim());
-                if(mounted){
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Switched to ${acc['name']}"), backgroundColor: Colors.green));
-                  _loadProfile();
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: Text("Switch to ${acc['name']}", style: TextStyle(color: Colors.black, fontSize: 15, fontWeight: FontWeight.bold)),
+          content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text("Enter password for ${acc['email']}", style: TextStyle(color: Colors.grey, fontSize: 12)),
+            SizedBox(height: 10),
+            TextField(controller: passCtrl, obscureText: true, style: TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Password", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
+            SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: sendingReset? SizedBox(height:16,width:16,child:CircularProgressIndicator(strokeWidth:2)) :
+              TextButton(
+                onPressed: () async {
+                  setDialogState(()=> sendingReset = true);
+                  try {
+                    await FirebaseAuth.instance.sendPasswordResetEmail(email: acc['email']);
+                    if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Reset link bhej diya ${acc['email']} pe check karo"), backgroundColor: Colors.green, duration: Duration(seconds: 4)));
+                  } catch(e){
+                    if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+                  }
+                  setDialogState(()=> sendingReset = false);
+                },
+                child: Text("Forgot Password?", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13)),
+              ),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: ()=> Navigator.pop(context), child: Text("Cancel")),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
+              onPressed: () async {
+                Navigator.pop(context);
+                try {
+                  await _saveCurrentAccount();
+                  // FIX: yahan signOut bilkul nahi karna
+                  await FirebaseAuth.instance.signInWithEmailAndPassword(email: acc['email'], password: passCtrl.text.trim());
+                  if(mounted){
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Switched to ${acc['name']}"), backgroundColor: Colors.green));
+                    _loadProfile();
+                  }
+                } catch(e){
+                  String msg = "Wrong password for ${acc['email']}";
+                  if(e.toString().toLowerCase().contains("user-not-found")) msg = "Ye account Google se bana hai, password nahi hai - Delete karke naya banao";
+                  if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red, duration: Duration(seconds: 4)));
                 }
-              } catch(e){
-                String msg = e.toString();
-                if(msg.toLowerCase().contains("wrong") || msg.toLowerCase().contains("invalid")) msg = "Wrong password for ${acc['email']}";
-                if(msg.toLowerCase().contains("user-not-found")) msg = "Ye account Google se bana hai, password nahi hai";
-                if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red, duration: Duration(seconds: 3)));
-              }
-            },
-            child: Text("Switch", style: TextStyle(color: Colors.white)),
-          )
-        ],
+              },
+              child: Text("Switch", style: TextStyle(color: Colors.white)),
+            )
+          ],
+        ),
       ),
     );
   }
@@ -308,6 +362,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   leading: acc['photo']!= ""? CircleAvatar(radius: 22, backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(radius: 22, child: Text(acc['name'].toString().isNotEmpty? acc['name'][0].toUpperCase() : "U")),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
                   subtitle: Text(acc['email'], style: TextStyle(fontSize: 11)),
+                  trailing: IconButton(icon: Icon(Icons.delete, size: 20, color: Colors.grey), onPressed: ()=> _removeAccount(acc['uid'])),
                   onTap: () async {
                     Navigator.pop(context);
                     await _switchToAccount(acc);
