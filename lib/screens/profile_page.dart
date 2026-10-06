@@ -7,7 +7,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'reel_page.dart';
-import 'demo_page.dart'; // Demo ke liye add kiya
+import 'demo_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -17,11 +17,101 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   List<Map<String, dynamic>> savedAccounts = [];
+  String myUsername = "";
+  String myGoogleName = "";
+  bool _loadingUsername = true;
 
   @override
   void initState() {
     super.initState();
     _loadSavedAccounts();
+    _loadUsername();
+  }
+
+  Future<void> _loadUsername() async {
+    var uid = FirebaseAuth.instance.currentUser?.uid;
+    if(uid == null) return;
+    var snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+    if(snap.exists){
+      var d = snap.data() as Map<String,dynamic>;
+      setState(() {
+        myUsername = (d['username']?? "").toString();
+        myGoogleName = (d['googleName']?? d['name']?? "").toString();
+        _loadingUsername = false;
+      });
+    } else {
+      setState(() => _loadingUsername = false);
+    }
+  }
+
+  // ID EDIT FUNCTION
+  Future<void> _editUsername() async {
+    TextEditingController ctrl = TextEditingController(text: myUsername);
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.black,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Text("ID Edit Karo ✏️", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text("Yehi ID search me ayegi", style: TextStyle(color: Colors.white54, fontSize: 12)),
+            SizedBox(height: 15),
+            TextField(
+              controller: ctrl,
+              style: TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                prefixIcon: Icon(Icons.alternate_email, color: Colors.pink),
+                hintText: "nayi ID likho",
+                hintStyle: TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: Colors.white10,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: ()=> Navigator.pop(context), child: Text("Cancel", style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.pink),
+            onPressed: () async {
+              String newId = ctrl.text.trim().toLowerCase().replaceAll(" ", "_");
+              if(newId.length < 3){
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("ID 3 akshar se badi honi chahiye")));
+                return;
+              }
+              // duplicate check
+              var check = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: newId).get();
+              // apni khud ki id ko allow karo
+              bool isOwn = check.docs.any((d)=> d.id == FirebaseAuth.instance.currentUser!.uid);
+              if(check.docs.isNotEmpty &&!isOwn){
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ye ID pehle se hai"), backgroundColor: Colors.red));
+                return;
+              }
+
+              // searchKeys banao
+              List<String> searchKeys = [];
+              for(int i=1; i<=newId.length; i++) searchKeys.add(newId.substring(0,i));
+              String gLow = myGoogleName.toLowerCase();
+              for(int i=1; i<=gLow.length; i++) searchKeys.add(gLow.substring(0,i));
+
+              await FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).set({
+                'username': newId,
+                'username_search': newId.toLowerCase(),
+                'searchKeys': searchKeys,
+              }, SetOptions(merge: true));
+
+              setState(()=> myUsername = newId);
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("ID change ho gayi: $newId"), backgroundColor: Colors.green));
+            },
+            child: Text("Save", style: TextStyle(color: Colors.white)),
+          )
+        ],
+      ),
+    );
   }
 
   Future<void> _loadSavedAccounts() async {
@@ -49,7 +139,6 @@ class _ProfilePageState extends State<ProfilePage> {
     await prefs.setString('yuopni_saved_accounts', jsonEncode(savedAccounts));
   }
 
-  // LOGOUT -> DEMO PAGE
   Future<void> _logout() async {
     await _saveCurrentAccount();
     await GoogleSignIn().signOut();
@@ -59,8 +148,7 @@ class _ProfilePageState extends State<ProfilePage> {
     await prefs.remove('userName');
     await prefs.remove('userPhoto');
     await prefs.remove('isLoggedIn');
-    await prefs.setBool('seenDemo', false); // Demo dubara dikhega
-
+    await prefs.setBool('seenDemo', false);
     if (mounted) {
       Navigator.pushAndRemoveUntil(
         context,
@@ -118,7 +206,7 @@ class _ProfilePageState extends State<ProfilePage> {
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-          ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+           ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
                   leading: acc['photo']!= ""? CircleAvatar(backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(child: Text(acc['name'][0])),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
                   subtitle: Text(acc['email']),
@@ -185,10 +273,39 @@ class _ProfilePageState extends State<ProfilePage> {
               Positioned(bottom: 0, right: 0, child: GestureDetector(onTap: _switchAccountDialog, child: const CircleAvatar(radius: 12, backgroundColor: Colors.black, child: Icon(Icons.switch_account, size: 14, color: Colors.white))))
             ]),
             const SizedBox(height: 10),
+            // GOOGLE NAME
             Text(user?.displayName?? "Yuopni User", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
-            Text(user?.email?? "", style: const TextStyle(color: Colors.grey)),
+            // ID + EDIT BUTTON - NAYA
+            _loadingUsername? CircularProgressIndicator(strokeWidth: 2)
+            : Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text("@${myUsername.isEmpty? 'id_not_set' : myUsername}", style: TextStyle(fontSize: 14, color: Colors.grey[700], fontWeight: FontWeight.w500)),
+                SizedBox(width: 6),
+                GestureDetector(
+                  onTap: _editUsername,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)),
+                    child: Row(children: [
+                      Icon(Icons.edit, size: 12, color: Colors.white),
+                      SizedBox(width: 3),
+                      Text("Edit", style: TextStyle(color: Colors.white, fontSize: 11))
+                    ]),
+                  ),
+                )
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(user?.email?? "", style: const TextStyle(color: Colors.grey, fontSize: 11)),
             const SizedBox(height: 10),
-            Row(mainAxisAlignment: MainAxisAlignment.center, children: [ElevatedButton(onPressed: _switchAccountDialog, child: const Text("Switch Account")), const SizedBox(width: 10), ElevatedButton(onPressed: _logout, style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white), child: const Text("Logout"))]),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              ElevatedButton(onPressed: _editUsername, style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white), child: const Text("Edit ID")),
+              const SizedBox(width: 10),
+              ElevatedButton(onPressed: _switchAccountDialog, child: const Text("Switch")),
+              const SizedBox(width: 10),
+              ElevatedButton(onPressed: _logout, style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, foregroundColor: Colors.white), child: const Text("Logout"))
+            ]),
             const SizedBox(height: 5),
             Text("${savedAccounts.length} account saved", style: const TextStyle(fontSize: 11, color: Colors.grey)),
             const SizedBox(height: 10),
