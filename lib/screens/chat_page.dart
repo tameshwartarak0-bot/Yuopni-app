@@ -33,36 +33,55 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   Future<void> _initChat() async {
+    myUid = FirebaseAuth.instance.currentUser?.uid; // fresh uid
+    if(myUid == null) return;
+
     var me = await FirebaseFirestore.instance.collection('users').doc(myUid).get();
     myName = (me.data()?['name']?? FirebaseAuth.instance.currentUser?.displayName)?? "User";
     myPhoto = (me.data()?['photo']?? FirebaseAuth.instance.currentUser?.photoURL)?? "";
-    List<String> ids = [myUid!, widget.otherUid]..sort();
+
+    List<String> ids = [myUid!, widget.otherUid];
+    ids.sort();
     chatId = ids.join("_");
-    var chatSnap = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
+
+    var chatRef = FirebaseFirestore.instance.collection('chats').doc(chatId);
+    var chatSnap = await chatRef.get();
+
     if(!chatSnap.exists){
-      await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
-        'participants': [myUid, widget.otherUid],
+      await chatRef.set({
+        'chatId': chatId,
+        'participants': [myUid, widget.otherUid], // dono ka auth uid
         'userNames': {myUid!: myName, widget.otherUid: widget.otherUsername},
         'userPhotos': {myUid!: myPhoto, widget.otherUid: widget.otherPhoto},
         'lastMsg': "",
         'lastTime': FieldValue.serverTimestamp(),
       });
+    } else {
+      // purane chat me bhi participants pakka update karo - yahi tera bug fix hai
+      await chatRef.set({
+        'participants': [myUid, widget.otherUid],
+        'userNames': {myUid!: myName, widget.otherUid: widget.otherUsername},
+        'userPhotos': {myUid!: myPhoto, widget.otherUid: widget.otherPhoto},
+      }, SetOptions(merge: true));
     }
-    setState((){});
+    if(mounted) setState((){});
   }
 
   Future<void> _sendText() async {
     if(_msgCtrl.text.trim().isEmpty) return;
     String text = _msgCtrl.text.trim();
     _msgCtrl.clear();
+    String currentUid = FirebaseAuth.instance.currentUser!.uid;
+
     await FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').add({
-      'sender': myUid,
+      'sender': currentUid,
       'type': 'text',
       'text': text,
       'time': FieldValue.serverTimestamp(),
     });
     await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
       'lastMsg': text,
+      'lastMessage': text, // dono field rakh diye taaki MessagePage me jo bhi use ho
       'lastTime': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     _scrollToBottom();
@@ -74,18 +93,21 @@ class _ChatPageState extends State<ChatPage> {
     if(file == null) return;
     setState(()=> _sending = true);
     try{
-      String fileName = "${myUid}_${DateTime.now().millisecondsSinceEpoch}.${isVideo? 'mp4':'jpg'}";
+      String currentUid = FirebaseAuth.instance.currentUser!.uid;
+      String fileName = "${currentUid}_${DateTime.now().millisecondsSinceEpoch}.${isVideo? 'mp4':'jpg'}";
       String path = "chat_media/$fileName";
       await Supabase.instance.client.storage.from('videos').upload(path, File(file.path));
       String url = Supabase.instance.client.storage.from('videos').getPublicUrl(path);
+
       await FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').add({
-        'sender': myUid,
+        'sender': currentUid,
         'type': isVideo? 'video' : 'image',
         'mediaUrl': url,
         'time': FieldValue.serverTimestamp(),
       });
       await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
         'lastMsg': isVideo? "📹 Video" : "📷 Photo",
+        'lastMessage': isVideo? "📹 Video" : "📷 Photo",
         'lastTime': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
       _scrollToBottom();
@@ -139,7 +161,7 @@ class _ChatPageState extends State<ChatPage> {
               itemCount: docs.length,
               itemBuilder: (_,i){
                 var d = docs[i].data() as Map<String,dynamic>;
-                bool isMe = d['sender']==myUid;
+                bool isMe = d['sender']==FirebaseAuth.instance.currentUser!.uid;
                 String type = d['type']??'text';
                 return Align(
                   alignment: isMe? Alignment.centerRight : Alignment.centerLeft,
