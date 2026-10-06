@@ -7,8 +7,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
-import 'reel_page.dart';
-import 'demo_page.dart';
+// Agar reel_page aur demo_page lib/ me hai to../ laga hai, agar screens/ me hi hai to../ hata dena
+import '../reel_page.dart';
+import '../demo_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -52,10 +53,10 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (_) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text("Name Edit Karo", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text("Name Edit Karo", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         content: TextField(
           controller: ctrl,
-          style: TextStyle(color: Colors.black),
+          style: const TextStyle(color: Colors.black),
           decoration: InputDecoration(
             hintText: "Naya naam likho",
             filled: true,
@@ -64,7 +65,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ),
         actions: [
-          TextButton(onPressed: ()=> Navigator.pop(context), child: Text("Cancel")),
+          TextButton(onPressed: ()=> Navigator.pop(context), child: const Text("Cancel")),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
             onPressed: () async {
@@ -83,9 +84,9 @@ class _ProfilePageState extends State<ProfilePage> {
               }, SetOptions(merge: true));
               setState(()=> myDisplayName = newName);
               await _saveCurrentAccount();
-              Navigator.pop(context);
+              if(mounted) Navigator.pop(context);
             },
-            child: Text("Save", style: TextStyle(color: Colors.white)),
+            child: const Text("Save", style: TextStyle(color: Colors.white)),
           )
         ],
       ),
@@ -127,10 +128,35 @@ class _ProfilePageState extends State<ProfilePage> {
     final prefs = await SharedPreferences.getInstance();
     savedAccounts.removeWhere((a) => a['uid'] == uid);
     await prefs.setString('yuopni_saved_accounts', jsonEncode(savedAccounts));
-    setState((){});
+    if(mounted) setState((){});
   }
 
-  // BINA LOGOUT HUYE NAYA ACCOUNT ADD / LOGIN
+  Future<void> _sendPasswordReset(String email, Function(bool) setLoading) async {
+    if(email.trim().isEmpty) return;
+    setLoading(true);
+    try {
+      List<String> methods = await FirebaseAuth.instance.fetchSignInMethodsForEmail(email.trim());
+      if(methods.isEmpty){
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Is email se koi account nahi hai"), backgroundColor: Colors.red));
+        setLoading(false);
+        return;
+      }
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email.trim());
+      if(mounted){
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text("Reset link bhej diya $email pe. Spam me bhi check karo."),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 5),
+        ));
+      }
+    } on FirebaseAuthException catch (e) {
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message?? e.code), backgroundColor: Colors.red));
+    } catch(e){
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+    }
+    setLoading(false);
+  }
+
   Future<void> _addNewAccountDialog({bool isLogin = false}) async {
     TextEditingController emailCtrl = TextEditingController();
     TextEditingController passCtrl = TextEditingController();
@@ -144,39 +170,23 @@ class _ProfilePageState extends State<ProfilePage> {
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: Text(isLogin? "Existing Account Login" : "Add New Account", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+          title: Text(isLogin? "Existing Account Login" : "Add New Account", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            TextField(controller: emailCtrl, style: TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Email", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
-            SizedBox(height: 10),
-            TextField(controller: passCtrl, obscureText: true, style: TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Password", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
-            if(isLogin)...[
-              SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: sendingReset? SizedBox(height:16,width:16,child:CircularProgressIndicator(strokeWidth:2)) :
-                TextButton(
-                  onPressed: () async {
-                    if(emailCtrl.text.trim().isEmpty){
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Pehle email likho"), backgroundColor: Colors.red));
-                      return;
-                    }
-                    setDialogState(()=> sendingReset = true);
-                    try{
-                      await FirebaseAuth.instance.sendPasswordResetEmail(email: emailCtrl.text.trim());
-                      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Reset link bhej diya ${emailCtrl.text.trim()} pe"), backgroundColor: Colors.green));
-                    }catch(e){
-                      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
-                    }
-                    setDialogState(()=> sendingReset = false);
-                  },
-                  child: Text("Forgot Password?", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13)),
-                ),
+            TextField(controller: emailCtrl, style: const TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Email", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
+            const SizedBox(height: 10),
+            TextField(controller: passCtrl, obscureText: true, style: const TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Password", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
+            if(isLogin) Align(
+              alignment: Alignment.centerRight,
+              child: sendingReset? const Padding(padding: EdgeInsets.only(top:8), child: SizedBox(height:16,width:16,child:CircularProgressIndicator(strokeWidth:2))) :
+              TextButton(
+                onPressed: () => _sendPasswordReset(emailCtrl.text.trim(), (v)=> setDialogState(()=> sendingReset = v)),
+                child: const Text("Forgot Password?", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13)),
               ),
-            ],
-            if(loadingDialog) Padding(padding: EdgeInsets.only(top: 15), child: Center(child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))),
+            ),
+            if(loadingDialog) const Padding(padding: EdgeInsets.only(top: 15), child: Center(child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))),
           ]),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: TextStyle(color: Colors.black))),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.black))),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
               onPressed: loadingDialog? null : () async {
@@ -184,16 +194,12 @@ class _ProfilePageState extends State<ProfilePage> {
                 setDialogState(()=> loadingDialog = true);
                 try {
                   await _saveCurrentAccount();
-                  FirebaseApp tempApp = await Firebase.initializeApp(
-                    name: 'temp_${DateTime.now().millisecondsSinceEpoch}',
-                    options: Firebase.app().options,
-                  );
+                  FirebaseApp tempApp = await Firebase.initializeApp(name: 'temp_${DateTime.now().millisecondsSinceEpoch}', options: Firebase.app().options);
                   var tempAuth = FirebaseAuth.instanceFor(app: tempApp);
-                  UserCredential tempCred;
                   if(isLogin){
-                    tempCred = await tempAuth.signInWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
+                    await tempAuth.signInWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
                   } else {
-                    tempCred = await tempAuth.createUserWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
+                    var tempCred = await tempAuth.createUserWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
                     await FirebaseFirestore.instance.collection('users').doc(tempCred.user!.uid).set({
                       'uid': tempCred.user!.uid,
                       'email': emailCtrl.text.trim(),
@@ -206,10 +212,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     }, SetOptions(merge: true));
                   }
                   await tempApp.delete();
-
-                  // FIX: signOut hata diya, direct signIn - fail hua to purana account safe rahega
                   await FirebaseAuth.instance.signInWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
-
                   if(mounted){
                     Navigator.pop(context);
                     Navigator.pop(context);
@@ -218,14 +221,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   }
                 } catch(e){
                   setDialogState(()=> loadingDialog = false);
-                  String msg = e.toString();
-                  if(msg.toLowerCase().contains("wrong-password") || msg.toLowerCase().contains("invalid-credential")) msg = "Wrong password";
-                  if(msg.toLowerCase().contains("user-not-found")) msg = "Account nahi mila";
-                  if(msg.toLowerCase().contains("email-already")) msg = "Email pehle se hai - 'Log into existing' use karo";
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
                 }
               },
-              child: Text(isLogin? "Login & Switch" : "Create & Switch", style: TextStyle(color: Colors.white)),
+              child: Text(isLogin? "Login & Switch" : "Create & Switch", style: const TextStyle(color: Colors.white)),
             ),
           ],
         ),
@@ -242,51 +241,39 @@ class _ProfilePageState extends State<ProfilePage> {
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-          title: Text("Switch to ${acc['name']}", style: TextStyle(color: Colors.black, fontSize: 15, fontWeight: FontWeight.bold)),
+          title: Text("Switch to ${acc['name']}", style: const TextStyle(color: Colors.black, fontSize: 15, fontWeight: FontWeight.bold)),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text("Enter password for ${acc['email']}", style: TextStyle(color: Colors.grey, fontSize: 12)),
-            SizedBox(height: 10),
-            TextField(controller: passCtrl, obscureText: true, style: TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Password", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
-            SizedBox(height: 10),
+            Text("Enter password for ${acc['email']}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 10),
+            TextField(controller: passCtrl, obscureText: true, style: const TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Password", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
+            const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerRight,
-              child: sendingReset? SizedBox(height:16,width:16,child:CircularProgressIndicator(strokeWidth:2)) :
+              child: sendingReset? const SizedBox(height:16,width:16,child:CircularProgressIndicator(strokeWidth:2)) :
               TextButton(
-                onPressed: () async {
-                  setDialogState(()=> sendingReset = true);
-                  try {
-                    await FirebaseAuth.instance.sendPasswordResetEmail(email: acc['email']);
-                    if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Reset link bhej diya ${acc['email']} pe check karo"), backgroundColor: Colors.green, duration: Duration(seconds: 4)));
-                  } catch(e){
-                    if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
-                  }
-                  setDialogState(()=> sendingReset = false);
-                },
-                child: Text("Forgot Password?", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13)),
+                onPressed: () => _sendPasswordReset(acc['email'], (v)=> setDialogState(()=> sendingReset = v)),
+                child: const Text("Forgot Password?", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13)),
               ),
             ),
           ]),
           actions: [
-            TextButton(onPressed: ()=> Navigator.pop(context), child: Text("Cancel")),
+            TextButton(onPressed: ()=> Navigator.pop(context), child: const Text("Cancel")),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
               onPressed: () async {
                 Navigator.pop(context);
                 try {
                   await _saveCurrentAccount();
-                  // FIX: yahan signOut bilkul nahi karna
                   await FirebaseAuth.instance.signInWithEmailAndPassword(email: acc['email'], password: passCtrl.text.trim());
                   if(mounted){
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Switched to ${acc['name']}"), backgroundColor: Colors.green));
                     _loadProfile();
                   }
                 } catch(e){
-                  String msg = "Wrong password for ${acc['email']}";
-                  if(e.toString().toLowerCase().contains("user-not-found")) msg = "Ye account Google se bana hai, password nahi hai - Delete karke naya banao";
-                  if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red, duration: Duration(seconds: 4)));
+                  if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Wrong password. Forgot pe click karke naya banao."), backgroundColor: Colors.red, duration: Duration(seconds: 4)));
                 }
               },
-              child: Text("Switch", style: TextStyle(color: Colors.white)),
+              child: const Text("Switch", style: TextStyle(color: Colors.white)),
             )
           ],
         ),
@@ -354,15 +341,15 @@ class _ProfilePageState extends State<ProfilePage> {
             ListTile(
               leading: CircleAvatar(radius: 22, backgroundImage: FirebaseAuth.instance.currentUser?.photoURL!= null && FirebaseAuth.instance.currentUser!.photoURL!.isNotEmpty? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!) : null, child: (FirebaseAuth.instance.currentUser?.photoURL==null || FirebaseAuth.instance.currentUser!.photoURL!.isEmpty)? Text((myDisplayName.isNotEmpty? myDisplayName[0] : "U").toUpperCase()) : null),
               title: Text(myDisplayName.isNotEmpty? myDisplayName : FirebaseAuth.instance.currentUser?.displayName?? "Current User", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-              subtitle: Text(FirebaseAuth.instance.currentUser?.email?? "", style: TextStyle(fontSize: 11)),
+              subtitle: Text(FirebaseAuth.instance.currentUser?.email?? "", style: const TextStyle(fontSize: 11)),
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-          ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+         ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
                   leading: acc['photo']!= ""? CircleAvatar(radius: 22, backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(radius: 22, child: Text(acc['name'].toString().isNotEmpty? acc['name'][0].toUpperCase() : "U")),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
-                  subtitle: Text(acc['email'], style: TextStyle(fontSize: 11)),
-                  trailing: IconButton(icon: Icon(Icons.delete, size: 20, color: Colors.grey), onPressed: ()=> _removeAccount(acc['uid'])),
+                  subtitle: Text(acc['email'], style: const TextStyle(fontSize: 11)),
+                  trailing: IconButton(icon: const Icon(Icons.delete, size: 20, color: Colors.grey), onPressed: ()=> _removeAccount(acc['uid'])),
                   onTap: () async {
                     Navigator.pop(context);
                     await _switchToAccount(acc);
@@ -370,7 +357,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 )),
             const SizedBox(height: 10),
             SizedBox(width: double.infinity, child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.black), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.black), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               icon: const Icon(Icons.add, color: Colors.black),
               label: const Text("Add Account", style: TextStyle(color: Colors.black)),
               onPressed: () {
@@ -380,7 +367,7 @@ class _ProfilePageState extends State<ProfilePage> {
             )),
             const SizedBox(height: 8),
             SizedBox(width: double.infinity, child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.black12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.black12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               icon: const Icon(Icons.login, color: Colors.black),
               label: const Text("Log into existing account", style: TextStyle(color: Colors.black)),
               onPressed: () {
@@ -442,18 +429,18 @@ class _ProfilePageState extends State<ProfilePage> {
               Positioned(bottom: 0, right: 0, child: GestureDetector(onTap: _switchAccountDialog, child: const CircleAvatar(radius: 12, backgroundColor: Colors.black, child: Icon(Icons.switch_account, size: 14, color: Colors.white))))
             ]),
             const SizedBox(height: 10),
-            _loading? CircularProgressIndicator(strokeWidth: 2)
+            _loading? const CircularProgressIndicator(strokeWidth: 2)
             : Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(myDisplayName.isNotEmpty? myDisplayName : (user?.displayName?? "Yuopni User"), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 GestureDetector(
                   onTap: _editName,
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(20)),
-                    child: Row(children: [Icon(Icons.edit, size: 12, color: Colors.white), SizedBox(width: 4), Text("Edit", style: TextStyle(color: Colors.white, fontSize: 12))]),
+                    child: const Row(children: [Icon(Icons.edit, size: 12, color: Colors.white), SizedBox(width: 4), Text("Edit", style: TextStyle(color: Colors.white, fontSize: 12))]),
                   ),
                 )
               ],
