@@ -18,7 +18,14 @@ class _MessagePageState extends State<MessagePage> {
   @override
   void initState(){
     super.initState();
+    // Auth listener - account switch hote hi uid update ho jayega
+    FirebaseAuth.instance.authStateChanges().listen((user){
+      if(mounted){
+        setState(()=> myUid = user?.uid);
+      }
+    });
     myUid = FirebaseAuth.instance.currentUser?.uid;
+
     _searchCtrl.addListener(() {
       String s = _searchCtrl.text.trim().toLowerCase();
       setState(()=> _search = s);
@@ -34,46 +41,41 @@ class _MessagePageState extends State<MessagePage> {
     setState(()=> _isSearching = true);
     try {
       String q = query.toLowerCase().replaceAll(" ", "_");
-
-      // 1. username exact se
       var snap1 = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: q).limit(10).get();
-
-      // 2. name prefix se
       var snap2 = await FirebaseFirestore.instance.collection('users')
-         .where('username_search', isGreaterThanOrEqualTo: q)
-         .where('username_search', isLessThanOrEqualTo: q + '\uf8ff')
-         .limit(10).get();
-
-      // 3. name field se bhi (Tameshwar jaisa naam)
-      var snap3 = await FirebaseFirestore.instance.collection('users').where('name', isGreaterThanOrEqualTo: query).where('name', isLessThanOrEqualTo: query + '\uf8ff').limit(10).get().catchError((_)=> null);
+        .where('username_search', isGreaterThanOrEqualTo: q)
+        .where('username_search', isLessThanOrEqualTo: q + '\uf8ff')
+        .limit(10).get();
 
       Set<String> seen = {};
       List<Map<String,dynamic>> temp = [];
-      for(var d in [...snap1.docs,...snap2.docs,...(snap3?.docs??[])]){
+      for(var d in [...snap1.docs,...snap2.docs]){
         var data = d.data() as Map<String,dynamic>;
-        if(data['uid'] == myUid) continue;
-        if(seen.contains(data['uid'])) continue;
-        seen.add(data['uid']);
+        String uid = (data['uid']?? d.id).toString(); // FIX: d.id fallback
+        if(uid == myUid) continue;
+        if(seen.contains(uid)) continue;
+        seen.add(uid);
+        data['uid'] = uid; // uid pakka set karo
         temp.add(data);
       }
 
-      // agar abhi bhi kuch nahi mila to saare users la ke filter karo (client side)
       if(temp.isEmpty){
-        var all = await FirebaseFirestore.instance.collection('users').limit(50).get();
+        var all = await FirebaseFirestore.instance.collection('users').limit(80).get();
         for(var d in all.docs){
           var data = d.data() as Map<String,dynamic>;
-          if(data['uid'] == myUid) continue;
+          String uid = (data['uid']?? d.id).toString();
+          if(uid == myUid) continue;
           String uname = (data['username']??"").toString().toLowerCase();
           String name = (data['name']??"").toString().toLowerCase();
           if(uname.contains(q) || name.contains(query.toLowerCase())){
-            if(!seen.contains(data['uid'])){
+            if(!seen.contains(uid)){
+              data['uid'] = uid;
               temp.add(data);
-              seen.add(data['uid']);
+              seen.add(uid);
             }
           }
         }
       }
-
       setState(()=> _searchResult = temp);
     } catch(e){
       print("search error $e");
@@ -89,6 +91,9 @@ class _MessagePageState extends State<MessagePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Har build pe current uid lo - switch ka sabse bada fix
+    myUid = FirebaseAuth.instance.currentUser?.uid;
+
     if(myUid == null) return Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.pink)));
 
     return Scaffold(
@@ -114,13 +119,13 @@ class _MessagePageState extends State<MessagePage> {
 
         Expanded(
           child: _search.isNotEmpty
-         ? _isSearching? Center(child: CircularProgressIndicator(color: Colors.pink))
+        ? _isSearching? Center(child: CircularProgressIndicator(color: Colors.pink))
             : _searchResult.isEmpty? Center(child: Text("Koi ID nahi mili: $_search", style: TextStyle(color: Colors.white54)))
             : ListView.builder(
                 itemCount: _searchResult.length,
                 itemBuilder: (_,i){
                   var d = _searchResult[i];
-                  String uid = d['uid']??"";
+                  String uid = (d['uid']??"").toString();
                   String displayName = (d['name']?? d['displayName']?? d['username']?? 'User').toString();
                   String username = (d['username']?? '').toString();
                   String photo = (d['photo']?? d['photoURL']?? '').toString();
@@ -136,6 +141,7 @@ class _MessagePageState extends State<MessagePage> {
                 }
               )
           : StreamBuilder<QuerySnapshot>(
+              // YAHI MAIN FIX HAI - har baar fresh myUid se query
               stream: FirebaseFirestore.instance.collection('chats').where('participants', arrayContains: myUid).snapshots(),
               builder: (c,snap){
                 if(snap.hasError) return Center(child: Text("Error: ${snap.error}", style: TextStyle(color: Colors.white54)));
@@ -146,6 +152,7 @@ class _MessagePageState extends State<MessagePage> {
                 docs.sort((a,b){
                   var da = (a.data() as Map)['lastTime'] as Timestamp?;
                   var db = (b.data() as Map)['lastTime'] as Timestamp?;
+                  if(da==null && db==null) return 0;
                   if(da==null) return 1;
                   if(db==null) return -1;
                   return db.compareTo(da);
@@ -157,14 +164,19 @@ class _MessagePageState extends State<MessagePage> {
                     var d = docs[i].data() as Map<String,dynamic>;
                     List parts = d['participants']?? [];
                     if(parts.length < 2) return SizedBox();
-                    String otherUid = parts[0] == myUid? parts[1] : parts[0];
+                    // dusra uid nikalo
+                    String otherUid = parts[0].toString() == myUid? parts[1].toString() : parts[0].toString();
                     Map names = d['userNames']?? {};
                     Map photos = d['userPhotos']?? {};
-                    String otherName = (names[otherUid]?? 'User').toString();
+                    String otherName = (names[otherUid]?? names[myUid]?? 'User').toString();
+                    // agar name map me nahi hai to fallback
+                    if(otherName == 'User' && d['lastMsg']!=null){
+                      // purane chat ke liye
+                    }
                     String otherPhoto = (photos[otherUid]?? '').toString();
-                    String lastMsg = (d['lastMsg']?? '').toString();
+                    String lastMsg = (d['lastMsg']?? d['lastMessage']?? '').toString();
                     return ListTile(
-                      leading: CircleAvatar(backgroundColor: Colors.white10, backgroundImage: otherPhoto.isNotEmpty? NetworkImage(otherPhoto): null, child: otherPhoto.isEmpty? Icon(Icons.person, color: Colors.white): null),
+                      leading: CircleAvatar(backgroundColor: Colors.white10, backgroundImage: otherPhoto.isNotEmpty? NetworkImage(otherPhoto): null, child: otherPhoto.isEmpty? Text(otherName.isNotEmpty? otherName[0].toUpperCase() : "U", style: TextStyle(color: Colors.white)): null),
                       title: Text(otherName, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       subtitle: Text(lastMsg, style: TextStyle(color: Colors.white54), maxLines: 1, overflow: TextOverflow.ellipsis),
                       onTap: ()=> Navigator.push(context, MaterialPageRoute(builder: (_)=> ChatPage(otherUid: otherUid, otherUsername: otherName, otherPhoto: otherPhoto))),
