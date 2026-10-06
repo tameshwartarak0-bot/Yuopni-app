@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
+import 'package:firebase_core/firebase_core.dart';
 import 'reel_page.dart';
 import 'demo_page.dart';
 
@@ -30,17 +31,19 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _loadProfile() async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if(uid == null) return;
+    // current account ko hamesha save rakho
+    await _saveCurrentAccount();
     var snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
     if(snap.exists){
       var d = snap.data() as Map<String,dynamic>;
       setState(() {
-        // YAHI naam Tameshwar Tarak ki jagah dikhega
         myDisplayName = (d['name']?? d['displayName']?? d['username']?? "").toString();
         _loading = false;
       });
     } else {
       setState(() => _loading = false);
     }
+    await _loadSavedAccounts();
   }
 
   Future<void> _editName() async {
@@ -68,12 +71,10 @@ class _ProfilePageState extends State<ProfilePage> {
             onPressed: () async {
               String newName = ctrl.text.trim();
               if(newName.length < 2) return;
-
               String usernameLower = newName.toLowerCase().replaceAll(" ", "_");
               List<String> searchKeys = [];
               for(int i=1; i<=newName.length; i++) searchKeys.add(newName.substring(0,i).toLowerCase());
               for(int i=1; i<=usernameLower.length; i++) searchKeys.add(usernameLower.substring(0,i));
-
               await FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).set({
                 'name': newName,
                 'displayName': newName,
@@ -81,8 +82,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 'username_search': usernameLower,
                 'searchKeys': searchKeys,
               }, SetOptions(merge: true));
-
               setState(()=> myDisplayName = newName);
+              await _saveCurrentAccount();
               Navigator.pop(context);
             },
             child: Text("Save", style: TextStyle(color: Colors.white)),
@@ -106,15 +107,137 @@ class _ProfilePageState extends State<ProfilePage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     final prefs = await SharedPreferences.getInstance();
+    String name = myDisplayName.isNotEmpty? myDisplayName : user.displayName?? "User";
     Map<String, dynamic> acc = {
       'uid': user.uid,
-      'name': myDisplayName.isNotEmpty? myDisplayName : user.displayName?? "User",
+      'name': name,
       'email': user.email?? "",
       'photo': user.photoURL?? "",
     };
-    savedAccounts.removeWhere((a) => a['uid'] == user.uid);
-    savedAccounts.add(acc);
+    List<Map<String,dynamic>> current = [];
+    String? old = prefs.getString('yuopni_saved_accounts');
+    if(old!=null) current = List<Map<String,dynamic>>.from(jsonDecode(old));
+
+    current.removeWhere((a) => a['uid'] == user.uid);
+    current.add(acc);
+    savedAccounts = current;
     await prefs.setString('yuopni_saved_accounts', jsonEncode(savedAccounts));
+    if(mounted) setState((){});
+  }
+
+  // BINA LOGOUT HUYE NAYA ACCOUNT ADD KARNA
+  Future<void> _addNewAccountDialog({bool isLogin = false}) async {
+    TextEditingController emailCtrl = TextEditingController();
+    TextEditingController passCtrl = TextEditingController();
+    bool loadingDialog = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: Text(isLogin? "Existing Account Login" : "Add New Account", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(controller: emailCtrl, style: TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Email", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
+            SizedBox(height: 10),
+            TextField(controller: passCtrl, obscureText: true, style: TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Password", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
+            if(loadingDialog) Padding(padding: EdgeInsets.only(top: 15), child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2)),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel", style: TextStyle(color: Colors.black))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
+              onPressed: loadingDialog? null : () async {
+                if(emailCtrl.text.trim().isEmpty || passCtrl.text.trim().isEmpty) return;
+                setDialogState(()=> loadingDialog = true);
+                try {
+                  // Pehle current account ko save kar lo
+                  await _saveCurrentAccount();
+
+                  // Temp App se naya account check karo - main account logout nahi hoga
+                  FirebaseApp tempApp = await Firebase.initializeApp(
+                    name: 'temp_${DateTime.now().millisecondsSinceEpoch}',
+                    options: Firebase.app().options,
+                  );
+                  var tempAuth = FirebaseAuth.instanceFor(app: tempApp);
+                  UserCredential tempCred;
+                  if(isLogin){
+                    tempCred = await tempAuth.signInWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
+                  } else {
+                    tempCred = await tempAuth.createUserWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
+                    // Firestore me user entry banao
+                    await FirebaseFirestore.instance.collection('users').doc(tempCred.user!.uid).set({
+                      'uid': tempCred.user!.uid,
+                      'email': emailCtrl.text.trim(),
+                      'name': emailCtrl.text.split('@')[0],
+                      'displayName': emailCtrl.text.split('@')[0],
+                      'photo': "",
+                      'createdAt': FieldValue.serverTimestamp(),
+                    }, SetOptions(merge: true));
+                  }
+                  await tempApp.delete();
+
+                  // Ab main app me switch karo
+                  await FirebaseAuth.instance.signOut();
+                  await FirebaseAuth.instance.signInWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
+
+                  if(mounted){
+                    Navigator.pop(context); // dialog close
+                    Navigator.pop(context); // bottomsheet close if open
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isLogin? "Login ho gaya!" : "Account add ho gaya!"), backgroundColor: Colors.green));
+                    // Profile reload
+                    _loadProfile();
+                  }
+                } catch(e){
+                  setDialogState(()=> loadingDialog = false);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+                }
+              },
+              child: Text(isLogin? "Login & Switch" : "Create & Switch", style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _switchToAccount(Map<String,dynamic> acc) async {
+    TextEditingController passCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        title: Text("Switch to ${acc['name']}", style: TextStyle(color: Colors.black, fontSize: 15, fontWeight: FontWeight.bold)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text("Enter password for ${acc['email']}", style: TextStyle(color: Colors.grey, fontSize: 12)),
+          SizedBox(height: 10),
+          TextField(controller: passCtrl, obscureText: true, style: TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Password", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
+        ]),
+        actions: [
+          TextButton(onPressed: ()=> Navigator.pop(context), child: Text("Cancel")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
+            onPressed: () async {
+              Navigator.pop(context);
+              try {
+                await _saveCurrentAccount();
+                await FirebaseAuth.instance.signOut();
+                await FirebaseAuth.instance.signInWithEmailAndPassword(email: acc['email'], password: passCtrl.text.trim());
+                if(mounted){
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Switched to ${acc['name']}"), backgroundColor: Colors.green));
+                  _loadProfile();
+                }
+              } catch(e){
+                if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Wrong password: $e"), backgroundColor: Colors.red));
+              }
+            },
+            child: Text("Switch", style: TextStyle(color: Colors.white)),
+          )
+        ],
+      ),
+    );
   }
 
   Future<void> _logout() async {
@@ -158,9 +281,12 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _switchAccountDialog() async {
+    await _loadSavedAccounts();
+    await _saveCurrentAccount();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => Container(
         padding: const EdgeInsets.all(15),
@@ -171,23 +297,51 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 15),
             const Text("Switch Account", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black)),
             const SizedBox(height: 10),
+
+            // Current account
             ListTile(
-              leading: CircleAvatar(backgroundImage: FirebaseAuth.instance.currentUser?.photoURL!= null? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!) : null),
-              title: Text(myDisplayName.isNotEmpty? myDisplayName : FirebaseAuth.instance.currentUser?.displayName?? "Current User", style: const TextStyle(color: Colors.black)),
-              subtitle: Text(FirebaseAuth.instance.currentUser?.email?? ""),
+              leading: CircleAvatar(radius: 22, backgroundImage: FirebaseAuth.instance.currentUser?.photoURL!= null && FirebaseAuth.instance.currentUser!.photoURL!.isNotEmpty? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!) : null, child: (FirebaseAuth.instance.currentUser?.photoURL==null || FirebaseAuth.instance.currentUser!.photoURL!.isEmpty)? Text((myDisplayName.isNotEmpty? myDisplayName[0] : "U").toUpperCase()) : null),
+              title: Text(myDisplayName.isNotEmpty? myDisplayName : FirebaseAuth.instance.currentUser?.displayName?? "Current User", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              subtitle: Text(FirebaseAuth.instance.currentUser?.email?? "", style: TextStyle(fontSize: 11)),
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-          ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
-                  leading: acc['photo']!= ""? CircleAvatar(backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(child: Text(acc['name'][0])),
+
+            // Baki saved accounts
+           ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+                  leading: acc['photo']!= ""? CircleAvatar(radius: 22, backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(radius: 22, child: Text(acc['name'].toString().isNotEmpty? acc['name'][0].toUpperCase() : "U")),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
-                  subtitle: Text(acc['email']),
-                  onTap: () async { Navigator.pop(context); await _logout(); },
+                  subtitle: Text(acc['email'], style: TextStyle(fontSize: 11)),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _switchToAccount(acc);
+                  },
                 )),
+
             const SizedBox(height: 10),
-            SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.add), label: const Text("Add / Login Another Account"), onPressed: () async { Navigator.pop(context); await _saveCurrentAccount(); await _logout(); })),
+            // YAHI MAIN BUTTON HAI - BINA LOGOUT KE ADD KAREGA
+            SizedBox(width: double.infinity, child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.black), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              icon: const Icon(Icons.add, color: Colors.black),
+              label: const Text("Add Account", style: TextStyle(color: Colors.black)),
+              onPressed: () {
+                Navigator.pop(context);
+                _addNewAccountDialog(isLogin: false);
+              }
+            )),
+            const SizedBox(height: 8),
+            SizedBox(width: double.infinity, child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.black12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              icon: const Icon(Icons.login, color: Colors.black),
+              label: const Text("Log into existing account", style: TextStyle(color: Colors.black)),
+              onPressed: () {
+                Navigator.pop(context);
+                _addNewAccountDialog(isLogin: true);
+              }
+            )),
             const SizedBox(height: 10),
-            SizedBox(width: double.infinity, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text("Logout", style: TextStyle(color: Colors.white)), onPressed: () async { Navigator.pop(context); await _logout(); })),
+            SizedBox(width: double.infinity, child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))), child: const Text("Logout", style: TextStyle(color: Colors.white)), onPressed: () async { Navigator.pop(context); await _logout(); })),
+            SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 10),
           ],
         ),
       ),
@@ -235,11 +389,10 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             const SizedBox(height: 40),
             Stack(children: [
-              CircleAvatar(radius: 45, backgroundColor: Colors.deepOrange, backgroundImage: user?.photoURL!= null? NetworkImage(user!.photoURL!) : null, child: user?.photoURL == null? Text((myDisplayName.isNotEmpty? myDisplayName[0] : "T").toUpperCase(), style: const TextStyle(fontSize: 30, color: Colors.white)) : null),
+              CircleAvatar(radius: 45, backgroundColor: Colors.deepOrange, backgroundImage: user?.photoURL!= null && user!.photoURL!.isNotEmpty? NetworkImage(user!.photoURL!) : null, child: (user?.photoURL == null || user!.photoURL!.isEmpty)? Text((myDisplayName.isNotEmpty? myDisplayName[0] : "T").toUpperCase(), style: const TextStyle(fontSize: 30, color: Colors.white)) : null),
               Positioned(bottom: 0, right: 0, child: GestureDetector(onTap: _switchAccountDialog, child: const CircleAvatar(radius: 12, backgroundColor: Colors.black, child: Icon(Icons.switch_account, size: 14, color: Colors.white))))
             ]),
             const SizedBox(height: 10),
-            // YAHAN AB EDIT KIYA HUA NAAM AYEGA - Tameshwar Tarak ki jagah
             _loading? CircularProgressIndicator(strokeWidth: 2)
             : Row(
               mainAxisAlignment: MainAxisAlignment.center,
