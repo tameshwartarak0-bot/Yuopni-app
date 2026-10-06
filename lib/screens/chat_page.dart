@@ -13,15 +13,22 @@ class ChatPage extends StatefulWidget {
 }
 
 class _ChatPageState extends State<ChatPage> {
-  TextEditingController _msgCtrl = TextEditingController();
-  String myUid = FirebaseAuth.instance.currentUser!.uid;
-  String get chatId => myUid.hashCode <= widget.otherUid.hashCode? "${myUid}_${widget.otherUid}" : "${widget.otherUid}_$myUid";
+  final TextEditingController _msgCtrl = TextEditingController();
+  final String myUid = FirebaseAuth.instance.currentUser!.uid;
 
-  void _sendMessage() async {
+  // Stable chatId - hashCode se duplicate nahi banega
+  String get chatId {
+    List<String> ids = [myUid, widget.otherUid];
+    ids.sort();
+    return ids.join("_");
+  }
+
+  Future<void> _sendMessage() async {
     if(_msgCtrl.text.trim().isEmpty) return;
     String text = _msgCtrl.text.trim();
     _msgCtrl.clear();
 
+    // Message add
     await FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').add({
       'text': text,
       'senderId': myUid,
@@ -29,16 +36,21 @@ class _ChatPageState extends State<ChatPage> {
       'time': FieldValue.serverTimestamp(),
     });
 
+    // Last message update - null safe
+    String myName = FirebaseAuth.instance.currentUser!.displayName??
+                    FirebaseAuth.instance.currentUser!.email?.split('@')[0]?? "Me";
+    String myPhoto = FirebaseAuth.instance.currentUser!.photoURL?? "";
+
     await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
       'participants': [myUid, widget.otherUid],
       'lastMsg': text,
       'lastTime': FieldValue.serverTimestamp(),
       'userNames': {
-        myUid: FirebaseAuth.instance.currentUser!.displayName?? "Me",
+        myUid: myName,
         widget.otherUid: widget.otherUsername
       },
       'userPhotos': {
-        myUid: FirebaseAuth.instance.currentUser!.photoURL?? "",
+        myUid: myPhoto,
         widget.otherUid: widget.otherPhoto
       }
     }, SetOptions(merge: true));
@@ -50,10 +62,15 @@ class _ChatPageState extends State<ChatPage> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
+        iconTheme: IconThemeData(color: Colors.white),
         title: Row(children: [
-          CircleAvatar(backgroundImage: widget.otherPhoto.isNotEmpty? NetworkImage(widget.otherPhoto) : null, child: widget.otherPhoto.isEmpty? Icon(Icons.person) : null),
+          CircleAvatar(
+            backgroundColor: Colors.white10,
+            backgroundImage: widget.otherPhoto.isNotEmpty? NetworkImage(widget.otherPhoto) : null,
+            child: widget.otherPhoto.isEmpty? Icon(Icons.person, color: Colors.white): null
+          ),
           SizedBox(width: 10),
-          Text(widget.otherUsername, style: TextStyle(color: Colors.white, fontSize: 16))
+          Expanded(child: Text(widget.otherUsername, style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis))
         ]),
       ),
       body: Column(children: [
@@ -62,6 +79,7 @@ class _ChatPageState extends State<ChatPage> {
             stream: FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').orderBy('time', descending: true).snapshots(),
             builder: (c,snap){
               if(!snap.hasData) return Center(child: CircularProgressIndicator(color: Colors.pink));
+              if(snap.data!.docs.isEmpty) return Center(child: Text("Say Hi 👋", style: TextStyle(color: Colors.white54)));
               return ListView.builder(
                 reverse: true,
                 itemCount: snap.data!.docs.length,
@@ -75,9 +93,14 @@ class _ChatPageState extends State<ChatPage> {
                       padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
                         color: isMe? Colors.pink : Colors.white10,
-                        borderRadius: BorderRadius.circular(15)
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(15),
+                          topRight: Radius.circular(15),
+                          bottomLeft: isMe? Radius.circular(15): Radius.circular(0),
+                          bottomRight: isMe? Radius.circular(0): Radius.circular(15),
+                        )
                       ),
-                      child: Text(d['text'], style: TextStyle(color: Colors.white)),
+                      child: Text(d['text']??'', style: TextStyle(color: Colors.white)),
                     ),
                   );
                 },
@@ -91,16 +114,21 @@ class _ChatPageState extends State<ChatPage> {
             Expanded(child: TextField(
               controller: _msgCtrl,
               style: TextStyle(color: Colors.white),
+              onSubmitted: (_)=> _sendMessage(),
               decoration: InputDecoration(
-                hintText: "Message...",
+                hintText: "Message ${widget.otherUsername}...",
                 hintStyle: TextStyle(color: Colors.white54),
                 filled: true,
                 fillColor: Colors.white10,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: BorderSide.none)
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(25), borderSide: BorderSide.none),
+                contentPadding: EdgeInsets.symmetric(horizontal: 20, vertical: 10)
               ),
             )),
             SizedBox(width: 8),
-            CircleAvatar(backgroundColor: Colors.pink, child: IconButton(icon: Icon(Icons.send, color: Colors.white), onPressed: _sendMessage))
+            CircleAvatar(
+              backgroundColor: Colors.pink,
+              child: IconButton(icon: Icon(Icons.send, color: Colors.white), onPressed: _sendMessage)
+            )
           ]),
         )
       ]),
