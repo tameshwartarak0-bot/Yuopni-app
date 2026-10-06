@@ -7,9 +7,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
-// Agar reel_page aur demo_page lib/ me hai to../ laga hai, agar screens/ me hi hai to../ hata dena
-import '../reel_page.dart';
-import '../demo_page.dart';
+import 'reel_page.dart';
+import 'demo_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -292,7 +291,7 @@ class _ProfilePageState extends State<ProfilePage> {
     await prefs.remove('isLoggedIn');
     await prefs.setBool('seenDemo', false);
     if (mounted) {
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const DemoPage()), (route) => false);
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => DemoPage()), (route) => false);
     }
   }
 
@@ -345,7 +344,7 @@ class _ProfilePageState extends State<ProfilePage> {
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-         ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+        ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
                   leading: acc['photo']!= ""? CircleAvatar(radius: 22, backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(radius: 22, child: Text(acc['name'].toString().isNotEmpty? acc['name'][0].toUpperCase() : "U")),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
                   subtitle: Text(acc['email'], style: const TextStyle(fontSize: 11)),
