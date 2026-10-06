@@ -37,31 +37,26 @@ class _LoginPageState extends State<LoginPage> {
       );
       final UserCredential userCred = await _auth.signInWithCredential(credential);
       final User? user = userCred.user;
-      if (user != null) {
-        DocumentReference userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
-        var snap = await userDoc.get();
-        
-        // Check karo username hai ya nahi
+      if (user!= null) {
+        var snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         bool hasUsername = false;
         if(snap.exists){
           var data = snap.data() as Map<String,dynamic>?;
-          if(data != null && data['username'] != null && data['username'].toString().isNotEmpty){
+          if(data!= null && data['username']!= null && data['username'].toString().isNotEmpty){
             hasUsername = true;
           }
         }
 
-        if (!snap.exists || !hasUsername) {
-          // Naya user - ID banane ka popup dikhao
+        if (!snap.exists ||!hasUsername) {
           if(mounted){
             setState(() => _loading = false);
-            _showUsernameDialog(user, user.displayName ?? "user");
+            _showUsernameDialog(user);
             return;
           }
         } else {
-          // Purana user - direct login
-          await userDoc.set({
+          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
             'email': user.email,
-            'name': user.displayName,
+            'name': (snap.data() as Map)['username'], // edited naam hi name rahega
             'googleName': user.displayName,
             'photo': user.photoURL,
             'photoURL': user.photoURL,
@@ -72,99 +67,104 @@ class _LoginPageState extends State<LoginPage> {
         }
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Login Error: $e"), backgroundColor: Colors.red),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Login Error: $e"), backgroundColor: Colors.red));
     }
     if (mounted) setState(() => _loading = false);
   }
 
-  // ID EDIT WALA POPUP
-  void _showUsernameDialog(User user, String googleName) {
-    TextEditingController usernameCtrl = TextEditingController(
-      text: googleName.toLowerCase().replaceAll(" ", "_")
-    );
-
+  // 2nd PHOTO JAISA POPUP - ID SET KARNE KA
+  void _showUsernameDialog(User user) {
+    TextEditingController usernameCtrl = TextEditingController(text: user.displayName?? "");
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: const Text("Apna ID banao ✨", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text("Ye naam search me dikhega, yahi edit kar sakte ho", style: TextStyle(color: Colors.white54, fontSize: 12)),
-            const SizedBox(height: 15),
-            TextField(
-              controller: usernameCtrl,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.alternate_email, color: Colors.pink),
-                hintText: "jaise - rahul_07",
-                hintStyle: const TextStyle(color: Colors.white30),
-                filled: true,
-                fillColor: Colors.white10,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+      builder: (_) => Dialog(
+        backgroundColor: Color(0xFF2D2D2D),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Flutter logo jaisa icon
+              Icon(Icons.flutter_dash, size: 60, color: Colors.blue),
+              SizedBox(height: 15),
+              Text("Choose your ID", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w500)),
+              SizedBox(height: 8),
+              Text("to continue to yuopni", style: TextStyle(color: Colors.white70, fontSize: 14)),
+              SizedBox(height: 25),
+              // Input field Google account list jaisa
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(10)),
+                child: TextField(
+                  controller: usernameCtrl,
+                  style: TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    hintText: "Apna naam / ID likho",
+                    hintStyle: TextStyle(color: Colors.white38),
+                    icon: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.deepOrange,
+                      backgroundImage: user.photoURL!=null? NetworkImage(user.photoURL!): null,
+                      child: user.photoURL==null? Text(user.displayName?[0]??"T", style: TextStyle(color: Colors.white)): null,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ],
+              SizedBox(height: 20),
+              Divider(color: Colors.white24),
+              SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, padding: EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))),
+                  onPressed: () async {
+                    String newUsername = usernameCtrl.text.trim();
+                    if (newUsername.length < 3) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("ID 3 akshar se bada rakho")));
+                      return;
+                    }
+                    String usernameLower = newUsername.toLowerCase().replaceAll(" ", "_");
+
+                    var check = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: usernameLower).get();
+                    if (check.docs.isNotEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ye ID pehle se hai"), backgroundColor: Colors.red));
+                      return;
+                    }
+
+                    List<String> searchKeys = [];
+                    for(int i=1; i<=newUsername.length; i++) searchKeys.add(newUsername.substring(0,i).toLowerCase());
+                    for(int i=1; i<=usernameLower.length; i++) searchKeys.add(usernameLower.substring(0,i));
+
+                    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+                      'uid': user.uid,
+                      'email': user.email,
+                      'name': newUsername, // YAHI TAMESHWAR TARAK KI JAGAH SHOW HOGA
+                      'username': usernameLower,
+                      'displayName': newUsername,
+                      'googleName': user.displayName,
+                      'username_search': usernameLower,
+                      'searchKeys': searchKeys,
+                      'photo': user.photoURL,
+                      'photoURL': user.photoURL,
+                      'createdAt': FieldValue.serverTimestamp(),
+                      'lastLogin': FieldValue.serverTimestamp(),
+                    }, SetOptions(merge: true));
+
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('seenDemo', true);
+                    if(mounted) Navigator.pop(context);
+                  },
+                  child: Text("Continue", style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+              SizedBox(height: 15),
+              Text("Ye naam hi profile me Tameshwar Tarak ki jagah dikhega", textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 11)),
+            ],
+          ),
         ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.pink, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-            onPressed: () async {
-              String newUsername = usernameCtrl.text.trim().toLowerCase().replaceAll(" ", "_");
-              if (newUsername.length < 3) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("ID 3 akshar se bada rakho")));
-                return;
-              }
-              
-              // Check duplicate ID
-              var check = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: newUsername).get();
-              if (check.docs.isNotEmpty) {
-                if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ye ID pehle se hai, dusra try karo"), backgroundColor: Colors.red));
-                return;
-              }
-
-              // Search ke liye keys banao
-              List<String> searchKeys = [];
-              for(int i=1; i<=newUsername.length; i++){
-                searchKeys.add(newUsername.substring(0,i));
-              }
-              // google name se bhi
-              String gLow = googleName.toLowerCase();
-              for(int i=1; i<=gLow.length; i++){
-                searchKeys.add(gLow.substring(0,i));
-              }
-
-              DocumentReference userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
-              await userDoc.set({
-                'uid': user.uid,
-                'email': user.email,
-                'name': googleName,
-                'googleName': googleName,
-                'username': newUsername,
-                'username_search': newUsername.toLowerCase(),
-                'searchKeys': searchKeys,
-                'photo': user.photoURL,
-                'photoURL': user.photoURL,
-                'createdAt': FieldValue.serverTimestamp(),
-                'lastLogin': FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
-
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.setBool('seenDemo', true);
-              
-              if(mounted) Navigator.pop(context);
-            },
-            child: const Text("Save & Continue", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          )
-        ],
       ),
     );
   }
@@ -173,11 +173,7 @@ class _LoginPageState extends State<LoginPage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('seenDemo', false);
     if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const DemoPage()),
-      (r) => false,
-    );
+    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const DemoPage()), (r) => false);
   }
 
   @override
@@ -195,55 +191,14 @@ class _LoginPageState extends State<LoginPage> {
               const Text("Yuopni", style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.white)),
               const Text("Real Gmail + Mobile Login - Firebase Secure", style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 50),
-              _loading
-                  ? const CircularProgressIndicator(color: Colors.pink)
-                  : Column(
-                    children: [
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          icon: Image.network("https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg", height: 20),
-                          label: const Text("Continue with Gmail", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                          ),
-                          onPressed: _loginWithGmail,
-                        ),
-                      ),
-                      const SizedBox(height: 15),
-                      const Row(children: [
-                        Expanded(child: Divider(color: Colors.white24)),
-                        Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text("OR", style: TextStyle(color: Colors.grey))),
-                        Expanded(child: Divider(color: Colors.white24)),
-                      ]),
-                      const SizedBox(height: 15),
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.phone_android, color: Colors.white),
-                          label: const Text("Continue with Mobile Number", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 15),
-                            side: const BorderSide(color: Colors.white),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                          ),
-                          onPressed: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => const PhoneLoginPage()));
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-              const SizedBox(height: 20),
-              const Text("Tumhara data Firestore me safe rahega\nApp band karne par bhi delete nahi hoga", textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: Colors.grey)),
-              const SizedBox(height: 30),
-              TextButton(
-                onPressed: _resetDemo,
-                child: const Text("DEMO", style: TextStyle(color: Colors.white, fontSize: 14, letterSpacing: 2)),
-              )
+              _loading? const CircularProgressIndicator(color: Colors.pink)
+              : Column(children: [
+                  SizedBox(width: double.infinity, child: ElevatedButton.icon(icon: Image.network("https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg", height: 20), label: const Text("Continue with Gmail", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))), onPressed: _loginWithGmail)),
+                  const SizedBox(height: 15),
+                  const Row(children: [Expanded(child: Divider(color: Colors.white24)), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text("OR", style: TextStyle(color: Colors.grey))), Expanded(child: Divider(color: Colors.white24))]),
+                  const SizedBox(height: 15),
+                  SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.phone_android, color: Colors.white), label: const Text("Continue with Mobile Number", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15), side: const BorderSide(color: Colors.white), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PhoneLoginPage())))),
+                ]),
             ],
           ),
         ),
