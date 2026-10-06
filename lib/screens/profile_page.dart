@@ -17,95 +17,73 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   List<Map<String, dynamic>> savedAccounts = [];
-  String myUsername = "";
-  String myGoogleName = "";
-  bool _loadingUsername = true;
+  String myDisplayName = "";
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _loadSavedAccounts();
-    _loadUsername();
+    _loadProfile();
   }
 
-  Future<void> _loadUsername() async {
+  Future<void> _loadProfile() async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if(uid == null) return;
     var snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
     if(snap.exists){
       var d = snap.data() as Map<String,dynamic>;
       setState(() {
-        myUsername = (d['username']?? "").toString();
-        myGoogleName = (d['googleName']?? d['name']?? "").toString();
-        _loadingUsername = false;
+        // YAHI naam Tameshwar Tarak ki jagah dikhega
+        myDisplayName = (d['name']?? d['displayName']?? d['username']?? "").toString();
+        _loading = false;
       });
     } else {
-      setState(() => _loadingUsername = false);
+      setState(() => _loading = false);
     }
   }
 
-  // ID EDIT FUNCTION
-  Future<void> _editUsername() async {
-    TextEditingController ctrl = TextEditingController(text: myUsername);
+  Future<void> _editName() async {
+    TextEditingController ctrl = TextEditingController(text: myDisplayName);
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: Text("ID Edit Karo ✏️", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text("Yehi ID search me ayegi", style: TextStyle(color: Colors.white54, fontSize: 12)),
-            SizedBox(height: 15),
-            TextField(
-              controller: ctrl,
-              style: TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                prefixIcon: Icon(Icons.alternate_email, color: Colors.pink),
-                hintText: "nayi ID likho",
-                hintStyle: TextStyle(color: Colors.white30),
-                filled: true,
-                fillColor: Colors.white10,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-              ),
-            ),
-          ],
+        title: Text("Name Edit Karo", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: ctrl,
+          style: TextStyle(color: Colors.black),
+          decoration: InputDecoration(
+            hintText: "Naya naam likho",
+            filled: true,
+            fillColor: Colors.grey[100],
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+          ),
         ),
         actions: [
-          TextButton(onPressed: ()=> Navigator.pop(context), child: Text("Cancel", style: TextStyle(color: Colors.white54))),
+          TextButton(onPressed: ()=> Navigator.pop(context), child: Text("Cancel")),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.pink),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.black),
             onPressed: () async {
-              String newId = ctrl.text.trim().toLowerCase().replaceAll(" ", "_");
-              if(newId.length < 3){
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("ID 3 akshar se badi honi chahiye")));
-                return;
-              }
-              // duplicate check
-              var check = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: newId).get();
-              // apni khud ki id ko allow karo
-              bool isOwn = check.docs.any((d)=> d.id == FirebaseAuth.instance.currentUser!.uid);
-              if(check.docs.isNotEmpty &&!isOwn){
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Ye ID pehle se hai"), backgroundColor: Colors.red));
-                return;
-              }
+              String newName = ctrl.text.trim();
+              if(newName.length < 2) return;
 
-              // searchKeys banao
+              String usernameLower = newName.toLowerCase().replaceAll(" ", "_");
               List<String> searchKeys = [];
-              for(int i=1; i<=newId.length; i++) searchKeys.add(newId.substring(0,i));
-              String gLow = myGoogleName.toLowerCase();
-              for(int i=1; i<=gLow.length; i++) searchKeys.add(gLow.substring(0,i));
+              for(int i=1; i<=newName.length; i++) searchKeys.add(newName.substring(0,i).toLowerCase());
+              for(int i=1; i<=usernameLower.length; i++) searchKeys.add(usernameLower.substring(0,i));
 
               await FirebaseFirestore.instance.collection('users').doc(FirebaseAuth.instance.currentUser!.uid).set({
-                'username': newId,
-                'username_search': newId.toLowerCase(),
+                'name': newName,
+                'displayName': newName,
+                'username': usernameLower,
+                'username_search': usernameLower,
                 'searchKeys': searchKeys,
               }, SetOptions(merge: true));
 
-              setState(()=> myUsername = newId);
+              setState(()=> myDisplayName = newName);
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("ID change ho gayi: $newId"), backgroundColor: Colors.green));
             },
             child: Text("Save", style: TextStyle(color: Colors.white)),
           )
@@ -130,7 +108,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final prefs = await SharedPreferences.getInstance();
     Map<String, dynamic> acc = {
       'uid': user.uid,
-      'name': user.displayName?? "User",
+      'name': myDisplayName.isNotEmpty? myDisplayName : user.displayName?? "User",
       'email': user.email?? "",
       'photo': user.photoURL?? "",
     };
@@ -150,11 +128,7 @@ class _ProfilePageState extends State<ProfilePage> {
     await prefs.remove('isLoggedIn');
     await prefs.setBool('seenDemo', false);
     if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const DemoPage()),
-        (route) => false,
-      );
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const DemoPage()), (route) => false);
     }
   }
 
@@ -175,9 +149,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       await FirebaseFirestore.instance.collection('posts').doc(postId).delete();
       if (data['videoPath']!= null && data['videoPath'].toString().isNotEmpty) {
-        try {
-          await Supabase.instance.client.storage.from('videos').remove([data['videoPath']]);
-        } catch (_) {}
+        try { await Supabase.instance.client.storage.from('videos').remove([data['videoPath']]); } catch (_) {}
       }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Post delete ho gayi")));
     } catch (e) {
@@ -201,12 +173,12 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 10),
             ListTile(
               leading: CircleAvatar(backgroundImage: FirebaseAuth.instance.currentUser?.photoURL!= null? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!) : null),
-              title: Text(FirebaseAuth.instance.currentUser?.displayName?? "Current User", style: const TextStyle(color: Colors.black)),
+              title: Text(myDisplayName.isNotEmpty? myDisplayName : FirebaseAuth.instance.currentUser?.displayName?? "Current User", style: const TextStyle(color: Colors.black)),
               subtitle: Text(FirebaseAuth.instance.currentUser?.email?? ""),
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-           ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+          ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
                   leading: acc['photo']!= ""? CircleAvatar(backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(child: Text(acc['name'][0])),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
                   subtitle: Text(acc['email']),
@@ -242,13 +214,7 @@ class _ProfilePageState extends State<ProfilePage> {
       return Container(color: Colors.grey[300], child: const Center(child: Icon(Icons.videocam, color: Colors.black54, size: 28)));
     }
     if (isVideoFile) {
-      return Container(
-        color: Colors.black,
-        child: Stack(fit: StackFit.expand, children: [
-          Container(color: Colors.grey[900]),
-          const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 36)),
-        ]),
-      );
+      return Container(color: Colors.black, child: Stack(fit: StackFit.expand, children: [Container(color: Colors.grey[900]), const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 36))]));
     }
     return CachedNetworkImage(
       imageUrl: url,
@@ -269,38 +235,32 @@ class _ProfilePageState extends State<ProfilePage> {
           children: [
             const SizedBox(height: 40),
             Stack(children: [
-              CircleAvatar(radius: 45, backgroundColor: Colors.deepOrange, backgroundImage: user?.photoURL!= null? NetworkImage(user!.photoURL!) : null, child: user?.photoURL == null? Text((user?.displayName?? "T")[0].toUpperCase(), style: const TextStyle(fontSize: 30, color: Colors.white)) : null),
+              CircleAvatar(radius: 45, backgroundColor: Colors.deepOrange, backgroundImage: user?.photoURL!= null? NetworkImage(user!.photoURL!) : null, child: user?.photoURL == null? Text((myDisplayName.isNotEmpty? myDisplayName[0] : "T").toUpperCase(), style: const TextStyle(fontSize: 30, color: Colors.white)) : null),
               Positioned(bottom: 0, right: 0, child: GestureDetector(onTap: _switchAccountDialog, child: const CircleAvatar(radius: 12, backgroundColor: Colors.black, child: Icon(Icons.switch_account, size: 14, color: Colors.white))))
             ]),
             const SizedBox(height: 10),
-            // GOOGLE NAME
-            Text(user?.displayName?? "Yuopni User", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
-            // ID + EDIT BUTTON - NAYA
-            _loadingUsername? CircularProgressIndicator(strokeWidth: 2)
+            // YAHAN AB EDIT KIYA HUA NAAM AYEGA - Tameshwar Tarak ki jagah
+            _loading? CircularProgressIndicator(strokeWidth: 2)
             : Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text("@${myUsername.isEmpty? 'id_not_set' : myUsername}", style: TextStyle(fontSize: 14, color: Colors.grey[700], fontWeight: FontWeight.w500)),
-                SizedBox(width: 6),
+                Text(myDisplayName.isNotEmpty? myDisplayName : (user?.displayName?? "Yuopni User"), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
+                SizedBox(width: 8),
                 GestureDetector(
-                  onTap: _editUsername,
+                  onTap: _editName,
                   child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(12)),
-                    child: Row(children: [
-                      Icon(Icons.edit, size: 12, color: Colors.white),
-                      SizedBox(width: 3),
-                      Text("Edit", style: TextStyle(color: Colors.white, fontSize: 11))
-                    ]),
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(20)),
+                    child: Row(children: [Icon(Icons.edit, size: 12, color: Colors.white), SizedBox(width: 4), Text("Edit", style: TextStyle(color: Colors.white, fontSize: 12))]),
                   ),
                 )
               ],
             ),
-            const SizedBox(height: 2),
-            Text(user?.email?? "", style: const TextStyle(color: Colors.grey, fontSize: 11)),
-            const SizedBox(height: 10),
+            const SizedBox(height: 4),
+            Text(user?.email?? "", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 12),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              ElevatedButton(onPressed: _editUsername, style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white), child: const Text("Edit ID")),
+              ElevatedButton(onPressed: _editName, style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white), child: const Text("Edit ID")),
               const SizedBox(width: 10),
               ElevatedButton(onPressed: _switchAccountDialog, child: const Text("Switch")),
               const SizedBox(width: 10),
@@ -320,53 +280,22 @@ class _ProfilePageState extends State<ProfilePage> {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.black));
                       if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)));
                       var docs = _sortDocs(snap.data!.docs);
-                      return GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
-                        itemCount: docs.length,
-                        itemBuilder: (_, i) {
-                          var doc = docs[i];
-                          var d = doc.data() as Map<String, dynamic>;
-                          String url = (d['mediaUrl']?? d['imageUrl']?? d['videoUrl']?? d['thumbnail']?? '').toString();
-                          bool isVideo = d['isVideo'] == true || url.toLowerCase().contains('.mp4') || d['videoUrl']!= null;
-                          return GestureDetector(
-                            onTap: () {
-                              if (isVideo) Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: docs)));
-                            },
-                            child: Stack(fit: StackFit.expand, children: [
-                              _buildMedia(url),
-                              if (isVideo) Container(color: Colors.black26),
-                              Positioned(top: 4, right: 4, child: InkWell(onTap: () => _deletePost(doc.id, d), child: Container(padding: const EdgeInsets.all(5), decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle), child: const Icon(Icons.delete, size: 14, color: Colors.white)))),
-                            ]),
-                          );
-                        },
-                      );
+                      return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: docs.length, itemBuilder: (_, i) {
+                          var doc = docs[i]; var d = doc.data() as Map<String, dynamic>; String url = (d['mediaUrl']?? d['imageUrl']?? d['videoUrl']?? d['thumbnail']?? '').toString(); bool isVideo = d['isVideo'] == true || url.toLowerCase().contains('.mp4') || d['videoUrl']!= null;
+                          return GestureDetector(onTap: () { if (isVideo) Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: docs))); }, child: Stack(fit: StackFit.expand, children: [_buildMedia(url), if (isVideo) Container(color: Colors.black26), Positioned(top: 4, right: 4, child: InkWell(onTap: () => _deletePost(doc.id, d), child: Container(padding: const EdgeInsets.all(5), decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle), child: const Icon(Icons.delete, size: 14, color: Colors.white))))]));
+                        });
                     },
                   ),
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user?.uid).snapshots(),
                     builder: (c, snap) {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.black));
-                      var all = _sortDocs(snap.data!.docs);
-                      var reels = all.where((doc) { var d = doc.data() as Map<String, dynamic>; var url = (d['mediaUrl']?? d['videoUrl']?? '').toString(); return d['isVideo'] == true || url.toLowerCase().contains('.mp4') || d['videoUrl']!= null; }).toList();
+                      var all = _sortDocs(snap.data!.docs); var reels = all.where((doc) { var d = doc.data() as Map<String, dynamic>; var url = (d['mediaUrl']?? d['videoUrl']?? '').toString(); return d['isVideo'] == true || url.toLowerCase().contains('.mp4') || d['videoUrl']!= null; }).toList();
                       if (reels.isEmpty) return const Center(child: Text("Abhi koi Reel nahi", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)));
-                      return GridView.builder(
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
-                        itemCount: reels.length,
-                        itemBuilder: (_, i) {
-                          var doc = reels[i];
-                          var d = doc.data() as Map<String, dynamic>;
-                          String thumb = (d['thumbnail']?? d['mediaUrl']?? d['videoUrl']?? '').toString();
-                          return GestureDetector(
-                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: reels))),
-                            child: Stack(fit: StackFit.expand, children: [
-                              _buildMedia(thumb),
-                              Container(color: Colors.black26),
-                              const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 32)),
-                              Positioned(top: 4, right: 4, child: InkWell(onTap: () => _deletePost(doc.id, d), child: Container(padding: const EdgeInsets.all(5), decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle), child: const Icon(Icons.delete, size: 14, color: Colors.white)))),
-                            ]),
-                          );
-                        },
-                      );
+                      return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: reels.length, itemBuilder: (_, i) {
+                          var doc = reels[i]; var d = doc.data() as Map<String, dynamic>; String thumb = (d['thumbnail']?? d['mediaUrl']?? d['videoUrl']?? '').toString();
+                          return GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: reels))), child: Stack(fit: StackFit.expand, children: [_buildMedia(thumb), Container(color: Colors.black26), const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 32)), Positioned(top: 4, right: 4, child: InkWell(onTap: () => _deletePost(doc.id, d), child: Container(padding: const EdgeInsets.all(5), decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle), child: const Icon(Icons.delete, size: 14, color: Colors.white))))]));
+                        });
                     },
                   ),
                 ],
