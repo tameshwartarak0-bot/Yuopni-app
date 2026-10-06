@@ -31,7 +31,6 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _loadProfile() async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if(uid == null) return;
-    // current account ko hamesha save rakho
     await _saveCurrentAccount();
     var snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
     if(snap.exists){
@@ -117,7 +116,6 @@ class _ProfilePageState extends State<ProfilePage> {
     List<Map<String,dynamic>> current = [];
     String? old = prefs.getString('yuopni_saved_accounts');
     if(old!=null) current = List<Map<String,dynamic>>.from(jsonDecode(old));
-
     current.removeWhere((a) => a['uid'] == user.uid);
     current.add(acc);
     savedAccounts = current;
@@ -125,7 +123,6 @@ class _ProfilePageState extends State<ProfilePage> {
     if(mounted) setState((){});
   }
 
-  // BINA LOGOUT HUYE NAYA ACCOUNT ADD KARNA
   Future<void> _addNewAccountDialog({bool isLogin = false}) async {
     TextEditingController emailCtrl = TextEditingController();
     TextEditingController passCtrl = TextEditingController();
@@ -153,10 +150,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 if(emailCtrl.text.trim().isEmpty || passCtrl.text.trim().isEmpty) return;
                 setDialogState(()=> loadingDialog = true);
                 try {
-                  // Pehle current account ko save kar lo
                   await _saveCurrentAccount();
-
-                  // Temp App se naya account check karo - main account logout nahi hoga
                   FirebaseApp tempApp = await Firebase.initializeApp(
                     name: 'temp_${DateTime.now().millisecondsSinceEpoch}',
                     options: Firebase.app().options,
@@ -167,32 +161,35 @@ class _ProfilePageState extends State<ProfilePage> {
                     tempCred = await tempAuth.signInWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
                   } else {
                     tempCred = await tempAuth.createUserWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
-                    // Firestore me user entry banao
                     await FirebaseFirestore.instance.collection('users').doc(tempCred.user!.uid).set({
                       'uid': tempCred.user!.uid,
                       'email': emailCtrl.text.trim(),
                       'name': emailCtrl.text.split('@')[0],
                       'displayName': emailCtrl.text.split('@')[0],
+                      'username': emailCtrl.text.split('@')[0].toLowerCase(),
+                      'username_search': emailCtrl.text.split('@')[0].toLowerCase(),
                       'photo': "",
                       'createdAt': FieldValue.serverTimestamp(),
                     }, SetOptions(merge: true));
                   }
                   await tempApp.delete();
 
-                  // Ab main app me switch karo
-                  await FirebaseAuth.instance.signOut();
+                  // FIXED: signOut hata diya, direct signIn - fail hoga to purana account rahega
                   await FirebaseAuth.instance.signInWithEmailAndPassword(email: emailCtrl.text.trim(), password: passCtrl.text.trim());
 
                   if(mounted){
-                    Navigator.pop(context); // dialog close
-                    Navigator.pop(context); // bottomsheet close if open
+                    Navigator.pop(context);
+                    Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isLogin? "Login ho gaya!" : "Account add ho gaya!"), backgroundColor: Colors.green));
-                    // Profile reload
                     _loadProfile();
                   }
                 } catch(e){
                   setDialogState(()=> loadingDialog = false);
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red));
+                  String msg = e.toString();
+                  if(msg.contains("wrong-password")) msg = "Wrong password";
+                  if(msg.contains("user-not-found")) msg = "User not found";
+                  if(msg.contains("email-already")) msg = "Email already exists - Log into existing pe jao";
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
                 }
               },
               child: Text(isLogin? "Login & Switch" : "Create & Switch", style: TextStyle(color: Colors.white)),
@@ -223,14 +220,17 @@ class _ProfilePageState extends State<ProfilePage> {
               Navigator.pop(context);
               try {
                 await _saveCurrentAccount();
-                await FirebaseAuth.instance.signOut();
+                // FIXED: Yahan signOut bilkul nahi karna, direct login karo
                 await FirebaseAuth.instance.signInWithEmailAndPassword(email: acc['email'], password: passCtrl.text.trim());
                 if(mounted){
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Switched to ${acc['name']}"), backgroundColor: Colors.green));
                   _loadProfile();
                 }
               } catch(e){
-                if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Wrong password: $e"), backgroundColor: Colors.red));
+                String msg = e.toString();
+                if(msg.toLowerCase().contains("wrong") || msg.toLowerCase().contains("invalid")) msg = "Wrong password for ${acc['email']}";
+                if(msg.toLowerCase().contains("user-not-found")) msg = "Ye account Google se bana hai, password nahi hai";
+                if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red, duration: Duration(seconds: 3)));
               }
             },
             child: Text("Switch", style: TextStyle(color: Colors.white)),
@@ -297,8 +297,6 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 15),
             const Text("Switch Account", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.black)),
             const SizedBox(height: 10),
-
-            // Current account
             ListTile(
               leading: CircleAvatar(radius: 22, backgroundImage: FirebaseAuth.instance.currentUser?.photoURL!= null && FirebaseAuth.instance.currentUser!.photoURL!.isNotEmpty? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!) : null, child: (FirebaseAuth.instance.currentUser?.photoURL==null || FirebaseAuth.instance.currentUser!.photoURL!.isEmpty)? Text((myDisplayName.isNotEmpty? myDisplayName[0] : "U").toUpperCase()) : null),
               title: Text(myDisplayName.isNotEmpty? myDisplayName : FirebaseAuth.instance.currentUser?.displayName?? "Current User", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
@@ -306,9 +304,7 @@ class _ProfilePageState extends State<ProfilePage> {
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-
-            // Baki saved accounts
-           ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+          ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
                   leading: acc['photo']!= ""? CircleAvatar(radius: 22, backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(radius: 22, child: Text(acc['name'].toString().isNotEmpty? acc['name'][0].toUpperCase() : "U")),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
                   subtitle: Text(acc['email'], style: TextStyle(fontSize: 11)),
@@ -317,9 +313,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     await _switchToAccount(acc);
                   },
                 )),
-
             const SizedBox(height: 10),
-            // YAHI MAIN BUTTON HAI - BINA LOGOUT KE ADD KAREGA
             SizedBox(width: double.infinity, child: OutlinedButton.icon(
               style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.black), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               icon: const Icon(Icons.add, color: Colors.black),
