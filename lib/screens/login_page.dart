@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'demo_page.dart';
-import 'phone_login_page.dart'; // <-- NAYA IMPORT
+import 'phone_login_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -40,25 +40,26 @@ class _LoginPageState extends State<LoginPage> {
       if (user != null) {
         DocumentReference userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
         var snap = await userDoc.get();
-        if (!snap.exists) {
-          await userDoc.set({
-            'uid': user.uid,
-            'email': user.email,
-            'name': user.displayName,
-            'photo': user.photoURL,
-            'createdAt': FieldValue.serverTimestamp(),
-            'lastLogin': FieldValue.serverTimestamp(),
-          });
+        
+        if (!snap.exists || snap.data() == null || (snap.data() as Map).containsKey('username') == false || snap['username'] == null || snap['username'] == "") {
+          // Naya user hai - Username wala popup dikhao
+          if(mounted){
+            setState(() => _loading = false);
+            _showUsernameDialog(user, googleUser.displayName ?? "User");
+            return;
+          }
         } else {
+          // Purana user hai jiska username pehle se hai
           await userDoc.set({
             'email': user.email,
             'name': user.displayName,
+            'googleName': user.displayName,
             'photo': user.photoURL,
             'lastLogin': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('seenDemo', true);
         }
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setBool('seenDemo', true);
       }
     } catch (e) {
       if (mounted) {
@@ -68,6 +69,81 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  // NAYA FUNCTION - Username Edit Popup
+  void _showUsernameDialog(User user, String googleName) {
+    TextEditingController usernameCtrl = TextEditingController(
+      text: googleName.toLowerCase().replaceAll(" ", "_") + "_${user.uid.substring(0,3)}"
+    );
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Text("Apna ID banao ✨", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Ye naam search me dikhega, abhi edit kar sakte ho", style: TextStyle(color: Colors.white54, fontSize: 12)),
+            const SizedBox(height: 15),
+            TextField(
+              controller: usernameCtrl,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.alternate_email, color: Colors.pink),
+                hintText: "jaise - rahul_07",
+                hintStyle: const TextStyle(color: Colors.white30),
+                filled: true,
+                fillColor: Colors.white10,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.pink, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
+            onPressed: () async {
+              String newUsername = usernameCtrl.text.trim().toLowerCase().replaceAll(" ", "_");
+              if (newUsername.length < 3) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Username kam se kam 3 letters ka rakho")));
+                return;
+              }
+              // Check karo username already hai kya
+              var check = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: newUsername).get();
+              if (check.docs.isNotEmpty) {
+                if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ye ID pehle se hai, dusra try karo"), backgroundColor: Colors.red));
+                return;
+              }
+
+              DocumentReference userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
+              await userDoc.set({
+                'uid': user.uid,
+                'email': user.email,
+                'name': user.displayName,
+                'googleName': user.displayName, // Google wala naam
+                'username': newUsername, // Tera custom ID - Search me yahi ayega
+                'photo': user.photoURL,
+                'createdAt': FieldValue.serverTimestamp(),
+                'lastLogin': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('seenDemo', true);
+              
+              if(mounted){
+                Navigator.pop(context); // dialog band
+              }
+            },
+            child: const Text("Save & Continue", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          )
+        ],
+      ),
+    );
   }
 
   Future<void> _resetDemo() async {
@@ -100,7 +176,6 @@ class _LoginPageState extends State<LoginPage> {
                   ? const CircularProgressIndicator(color: Colors.pink)
                   : Column(
                     children: [
-                      // GMAIL BUTTON
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -122,7 +197,6 @@ class _LoginPageState extends State<LoginPage> {
                         Expanded(child: Divider(color: Colors.white24)),
                       ]),
                       const SizedBox(height: 15),
-                      // PHONE BUTTON - NAYA
                       SizedBox(
                         width: double.infinity,
                         child: OutlinedButton.icon(
