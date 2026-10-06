@@ -41,20 +41,30 @@ class _LoginPageState extends State<LoginPage> {
         DocumentReference userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
         var snap = await userDoc.get();
         
-        if (!snap.exists || snap.data() == null || (snap.data() as Map).containsKey('username') == false || snap['username'] == null || snap['username'] == "") {
-          // Naya user hai - Username wala popup dikhao
+        // Check karo username hai ya nahi
+        bool hasUsername = false;
+        if(snap.exists){
+          var data = snap.data() as Map<String,dynamic>?;
+          if(data != null && data['username'] != null && data['username'].toString().isNotEmpty){
+            hasUsername = true;
+          }
+        }
+
+        if (!snap.exists || !hasUsername) {
+          // Naya user - ID banane ka popup dikhao
           if(mounted){
             setState(() => _loading = false);
-            _showUsernameDialog(user, googleUser.displayName ?? "User");
+            _showUsernameDialog(user, user.displayName ?? "user");
             return;
           }
         } else {
-          // Purana user hai jiska username pehle se hai
+          // Purana user - direct login
           await userDoc.set({
             'email': user.email,
             'name': user.displayName,
             'googleName': user.displayName,
             'photo': user.photoURL,
+            'photoURL': user.photoURL,
             'lastLogin': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
           final prefs = await SharedPreferences.getInstance();
@@ -71,10 +81,10 @@ class _LoginPageState extends State<LoginPage> {
     if (mounted) setState(() => _loading = false);
   }
 
-  // NAYA FUNCTION - Username Edit Popup
+  // ID EDIT WALA POPUP
   void _showUsernameDialog(User user, String googleName) {
     TextEditingController usernameCtrl = TextEditingController(
-      text: googleName.toLowerCase().replaceAll(" ", "_") + "_${user.uid.substring(0,3)}"
+      text: googleName.toLowerCase().replaceAll(" ", "_")
     );
 
     showDialog(
@@ -88,7 +98,7 @@ class _LoginPageState extends State<LoginPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Ye naam search me dikhega, abhi edit kar sakte ho", style: TextStyle(color: Colors.white54, fontSize: 12)),
+            const Text("Ye naam search me dikhega, yahi edit kar sakte ho", style: TextStyle(color: Colors.white54, fontSize: 12)),
             const SizedBox(height: 15),
             TextField(
               controller: usernameCtrl,
@@ -110,24 +120,39 @@ class _LoginPageState extends State<LoginPage> {
             onPressed: () async {
               String newUsername = usernameCtrl.text.trim().toLowerCase().replaceAll(" ", "_");
               if (newUsername.length < 3) {
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Username kam se kam 3 letters ka rakho")));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("ID 3 akshar se bada rakho")));
                 return;
               }
-              // Check karo username already hai kya
+              
+              // Check duplicate ID
               var check = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: newUsername).get();
               if (check.docs.isNotEmpty) {
                 if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ye ID pehle se hai, dusra try karo"), backgroundColor: Colors.red));
                 return;
               }
 
+              // Search ke liye keys banao
+              List<String> searchKeys = [];
+              for(int i=1; i<=newUsername.length; i++){
+                searchKeys.add(newUsername.substring(0,i));
+              }
+              // google name se bhi
+              String gLow = googleName.toLowerCase();
+              for(int i=1; i<=gLow.length; i++){
+                searchKeys.add(gLow.substring(0,i));
+              }
+
               DocumentReference userDoc = FirebaseFirestore.instance.collection('users').doc(user.uid);
               await userDoc.set({
                 'uid': user.uid,
                 'email': user.email,
-                'name': user.displayName,
-                'googleName': user.displayName, // Google wala naam
-                'username': newUsername, // Tera custom ID - Search me yahi ayega
+                'name': googleName,
+                'googleName': googleName,
+                'username': newUsername,
+                'username_search': newUsername.toLowerCase(),
+                'searchKeys': searchKeys,
                 'photo': user.photoURL,
+                'photoURL': user.photoURL,
                 'createdAt': FieldValue.serverTimestamp(),
                 'lastLogin': FieldValue.serverTimestamp(),
               }, SetOptions(merge: true));
@@ -135,9 +160,7 @@ class _LoginPageState extends State<LoginPage> {
               final prefs = await SharedPreferences.getInstance();
               await prefs.setBool('seenDemo', true);
               
-              if(mounted){
-                Navigator.pop(context); // dialog band
-              }
+              if(mounted) Navigator.pop(context);
             },
             child: const Text("Save & Continue", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           )
