@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'main_screen.dart';
+import 'screens/login_page.dart'; // agar tera login file ka naam alag hai to yaha change kar - jaise auth_page.dart
 
 class DemoPage extends StatefulWidget {
   const DemoPage({super.key});
@@ -23,12 +25,22 @@ class _DemoPageState extends State<DemoPage> {
     await prefs.setBool('seenDemo', true);
     if (!mounted) return;
 
-    // FIX: Chahe login ho ya na ho, hamesha MainScreen khulega
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => MainScreen()),
-      (route) => false
-    );
+    var user = FirebaseAuth.instance.currentUser;
+    if (user!= null) {
+      // Login hai to MainScreen
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => MainScreen()),
+        (route) => false
+      );
+    } else {
+      // Login nahi hai to LoginPage pe bhejo
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()), // <-- yaha tera login page ka naam daal
+        (route) => false
+      );
+    }
   }
 
   @override
