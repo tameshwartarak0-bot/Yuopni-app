@@ -280,19 +280,13 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  // YAHI MAIN FIX HAI - LOGOUT PE seenDemo FALSE NAHI KARNA
   Future<void> _logout() async {
     await _saveCurrentAccount();
-    await GoogleSignIn().signOut();
+    try { await GoogleSignIn().signOut(); } catch(_){}
     await FirebaseAuth.instance.signOut();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('userEmail');
-    await prefs.remove('userName');
-    await prefs.remove('userPhoto');
-    await prefs.remove('isLoggedIn');
-    await prefs.setBool('seenDemo', false);
-    if (mounted) {
-      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => DemoPage()), (route) => false);
-    }
+    // Bas itna hi - seenDemo wala line hata diya hai
+    // main.dart ka StreamBuilder khud DemoPage pe le jayega
   }
 
   Future<void> _deletePost(String postId, Map<String, dynamic> data) async {
@@ -344,7 +338,7 @@ class _ProfilePageState extends State<ProfilePage> {
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-        ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+       ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
                   leading: acc['photo']!= ""? CircleAvatar(radius: 22, backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(radius: 22, child: Text(acc['name'].toString().isNotEmpty? acc['name'][0].toUpperCase() : "U")),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
                   subtitle: Text(acc['email'], style: const TextStyle(fontSize: 11)),
