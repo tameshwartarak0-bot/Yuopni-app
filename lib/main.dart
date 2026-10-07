@@ -2,12 +2,10 @@ import 'package:app_links/app_links.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'screens/demo_page.dart';
 import 'screens/main_screen.dart';
-import 'screens/login_page.dart';
 import 'screens/reel_page.dart';
 
 void main() async {
@@ -17,14 +15,11 @@ void main() async {
     url: 'https://aynsnbgulloedotmjlcq.supabase.co',
     anonKey: 'sb_publishable_nFfjqpnLm5FUZD7GbVXlYw_X3vkM_sj',
   );
-  final prefs = await SharedPreferences.getInstance();
-  bool seenDemo = prefs.getBool('seenDemo')?? false;
-  runApp(YuopniApp(seenDemo: seenDemo));
+  runApp(const YuopniApp());
 }
 
 class YuopniApp extends StatefulWidget {
-  final bool seenDemo;
-  const YuopniApp({required this.seenDemo, super.key});
+  const YuopniApp({super.key});
   @override
   State<YuopniApp> createState() => _YuopniAppState();
 }
@@ -74,14 +69,25 @@ class _YuopniAppState extends State<YuopniApp> {
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-      // AB LOGIN CHECK YAHAN SE HATA DIYA
-      home: Builder(builder: (context) {
-        if (!widget.seenDemo) {
-          return const DemoPage();
-        }
-        // Chahe user login ho ya na ho, sidha MainScreen khulega
-        return MainScreen();
-      }),
+      home: StreamBuilder<fb_auth.User?>(
+        stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              backgroundColor: Colors.black,
+              body: Center(child: CircularProgressIndicator(color: Colors.white)),
+            );
+          }
+          // Login hai to sidha MainScreen
+          if (snapshot.hasData) {
+            return MainScreen();
+          }
+          // Login nahi hai to DemoPage
+          else {
+            return const DemoPage();
+          }
+        },
+      ),
     );
   }
 }
