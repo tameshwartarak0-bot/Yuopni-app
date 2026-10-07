@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
 import 'package:share_plus/share_plus.dart';
 import 'main_screen.dart'; // pauseReelsNotifier ke liye
 
@@ -96,32 +97,39 @@ class ReelItem extends StatefulWidget {
 class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin {
   @override bool get wantKeepAlive => true;
 
-  VideoPlayerController? _ctrl;
+  VideoPlayerController? _videoController;
+  ChewieController? _chewieController;
   bool _isInit = false;
   bool _isError = false;
   bool _liked = false;
   int _likeCount = 0;
+  bool _showControls = true;
 
   @override
   void initState() {
     super.initState();
-    String url = (widget.data['mediaUrl']?? widget.data['videoUrl']?? widget.data['imageUrl']?? '').toString().trim();
+    String url = (widget.data['mediaUrl']?? widget.data['videoUrl']?? '').toString().trim();
     _likeCount = (widget.data['likes'] as List?)?.length?? 0;
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid!= null) _liked = (widget.data['likes'] as List?)?.contains(uid)?? false;
 
     if (url.isNotEmpty && url.contains('http')) {
-      _ctrl = VideoPlayerController.networkUrl(Uri.parse(url))
- ..initialize().then((_) {
-          if (mounted) {
-            setState(() => _isInit = true);
-            _ctrl!.setLooping(true);
-            _ctrl!.setVolume(1.0);
-            if (widget.isActive &&!pauseReelsNotifier.value) _ctrl!.play();
-          }
-        }).catchError((e) {
-          if (mounted) setState(() => _isError = true);
-        });
+      _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
+      _videoController!.initialize().then((_) {
+        if (!mounted) return;
+        _chewieController = ChewieController(
+          videoPlayerController: _videoController!,
+          autoPlay: widget.isActive,
+          looping: true,
+          showControls: false, // hum custom controls dikhayenge
+          allowFullScreen: true,
+          aspectRatio: _videoController!.value.aspectRatio,
+        );
+        setState(() => _isInit = true);
+        if (widget.isActive &&!pauseReelsNotifier.value) _videoController!.play();
+      }).catchError((e) {
+        if (mounted) setState(() => _isError = true);
+      });
     } else {
       _isError = true;
     }
@@ -132,19 +140,24 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
   void didUpdateWidget(covariant ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isActive!= widget.isActive) {
-      if (widget.isActive &&!pauseReelsNotifier.value) _ctrl?.play(); else _ctrl?.pause();
+      if (widget.isActive &&!pauseReelsNotifier.value) {
+        _videoController?.play();
+      } else {
+        _videoController?.pause();
+      }
     }
   }
 
   void _handleGlobalPause() {
-    if (!mounted || _ctrl == null ||!_isInit) return;
-    if (pauseReelsNotifier.value) _ctrl!.pause(); else if (widget.isActive) _ctrl!.play();
+    if (!mounted || _videoController == null ||!_isInit) return;
+    if (pauseReelsNotifier.value) _videoController!.pause(); else if (widget.isActive) _videoController!.play();
   }
 
   @override
   void dispose() {
     pauseReelsNotifier.removeListener(_handleGlobalPause);
-    _ctrl?.dispose();
+    _videoController?.dispose();
+    _chewieController?.dispose();
     super.dispose();
   }
 
@@ -156,7 +169,6 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     if (_liked) ref.update({'likes': FieldValue.arrayUnion([uid])}); else ref.update({'likes': FieldValue.arrayRemove([uid])});
   }
 
-  // REEL KO DM ME BHEJNE KA FUNCTION
   Future<void> _sendReelToChat(String chatId, String otherName) async {
     String? myUid = FirebaseAuth.instance.currentUser?.uid;
     String videoUrl = (widget.data['mediaUrl']?? widget.data['videoUrl']?? '').toString();
@@ -186,20 +198,20 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => Container(
         height: 450,
-        padding: EdgeInsets.all(12),
+        padding: const EdgeInsets.all(12),
         child: Column(
           children: [
             Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))),
-            SizedBox(height: 12),
-            Text("Yuopni pe Share karo", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
+            const Text("Yuopni pe Share karo", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+            const SizedBox(height: 12),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance.collection('chats').where('participants', arrayContains: myUid).snapshots(),
                 builder: (c,snap){
-                  if(snap.connectionState==ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: Colors.pink));
+                  if(snap.connectionState==ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.pink));
                   if(!snap.hasData || snap.data!.docs.isEmpty){
-                    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.message, color: Colors.white24, size: 50), SizedBox(height: 10), Text("Koi chat nahi hai\nPehle Message page me ID search karke chat start karo", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))]));
+                    return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.message, color: Colors.white24, size: 50), SizedBox(height: 10), Text("Koi chat nahi hai\nPehle Message page me ID search karke chat start karo", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))]));
                   }
                   var docs = snap.data!.docs;
                   return ListView.builder(
@@ -207,14 +219,14 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
                     itemBuilder: (_,i){
                       var d = docs[i].data() as Map<String,dynamic>;
                       List parts = d['participants']??[];
-                      if(parts.length<2) return SizedBox();
+                      if(parts.length<2) return const SizedBox();
                       String otherUid = parts[0]==myUid? parts[1]: parts[0];
                       String otherName = (d['userNames']?[otherUid]?? "User").toString();
                       String otherPhoto = (d['userPhotos']?[otherUid]?? "").toString();
                       return ListTile(
                         leading: CircleAvatar(radius: 22, backgroundImage: otherPhoto.isNotEmpty? NetworkImage(otherPhoto): null, child: otherPhoto.isEmpty? Text(otherName[0].toUpperCase()): null),
-                        title: Text(otherName, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        trailing: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.pink, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))), onPressed: () async { Navigator.pop(context); await _sendReelToChat(docs[i].id, otherName); }, child: Text("Send")),
+                        title: Text(otherName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        trailing: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.pink, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))), onPressed: () async { Navigator.pop(context); await _sendReelToChat(docs[i].id, otherName); }, child: const Text("Send")),
                       );
                     },
                   );
@@ -258,20 +270,39 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     return Container(
       color: Colors.black,
       child: Stack(fit: StackFit.expand, children: [
+        // VIDEO PLAYER - MX PLAYER JAISE
         _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 50))
-        : _isInit && _ctrl!= null
-   ? GestureDetector(onTap: (){
-              setState((){
-                if(_ctrl!.value.isPlaying){ _ctrl!.pause(); }
-                else { _ctrl!.play(); }
-              });
-            }, child: Center(child: AspectRatio(aspectRatio: _ctrl!.value.aspectRatio, child: VideoPlayer(_ctrl!))))
+        : _isInit && _videoController!= null && _chewieController!= null
+  ? GestureDetector(
+              onTap: (){
+                setState(() => _showControls =!_showControls);
+                if(_videoController!.value.isPlaying){ _videoController!.pause(); }
+                else { _videoController!.play(); }
+              },
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: _videoController!.value.aspectRatio,
+                  child: Chewie(controller: _chewieController!),
+                ),
+              ),
+            )
           : const Center(child: CircularProgressIndicator(color: Colors.white)),
 
-        if (_isInit && _ctrl!= null &&!_ctrl!.value.isPlaying)
-          const Center(child: Icon(Icons.play_arrow, size: 80, color: Colors.white54)),
+        // PLAY ICON BEECH ME
+        if (_isInit && _videoController!= null &&!_videoController!.value.isPlaying)
+          const Center(child: Icon(Icons.play_arrow, size: 80, color: Colors.white70)),
 
-        Positioned(bottom: 30, left: 15, right: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // MX PLAYER JAISA PROGRESS BAR NICHE
+        if (_isInit && _videoController!= null)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: VideoProgressIndicator(_videoController!, allowScrubbing: true, colors: const VideoProgressColors(playedColor: Colors.pink, bufferedColor: Colors.white24, backgroundColor: Colors.white10), padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0)),
+          ),
+
+        // CAPTION & USERNAME
+        Positioned(bottom: 35, left: 15, right: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if ((widget.data['title']?? widget.data['caption']?? '').toString().isNotEmpty)
             Text(widget.data['title']?? widget.data['caption']?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
           const SizedBox(height: 6),
@@ -284,6 +315,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
             Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [const Icon(Icons.music_note, color: Colors.pink, size: 14), const SizedBox(width: 4), Expanded(child: Text(widget.data['songName'], style: const TextStyle(color: Colors.white, fontSize: 12), overflow: TextOverflow.ellipsis))]))
         ])),
 
+        // RIGHT SIDE BUTTONS
         Positioned(right: 5, bottom: 90, child: Column(children: [
           IconButton(icon: Icon(_liked? Icons.favorite : Icons.favorite_border, color: _liked? Colors.red : Colors.white, size: 32), onPressed: _toggleLike),
           Text("$_likeCount", style: const TextStyle(color: Colors.white, fontSize: 12)),
