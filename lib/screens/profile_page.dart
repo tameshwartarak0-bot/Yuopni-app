@@ -280,12 +280,11 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // YAHI MAIN FIX HAI - LOGOUT PE seenDemo FALSE NAHI KARNA
+  // FIX 1: LOGOUT BUG KHATAM - seenDemo wala line hata diya
   Future<void> _logout() async {
     await _saveCurrentAccount();
     try { await GoogleSignIn().signOut(); } catch(_){}
     await FirebaseAuth.instance.signOut();
-    // Bas itna hi - seenDemo wala line hata diya hai
     // main.dart ka StreamBuilder khud DemoPage pe le jayega
   }
 
@@ -338,7 +337,7 @@ class _ProfilePageState extends State<ProfilePage> {
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
-       ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
+      ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
                   leading: acc['photo']!= ""? CircleAvatar(radius: 22, backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(radius: 22, child: Text(acc['name'].toString().isNotEmpty? acc['name'][0].toUpperCase() : "U")),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
                   subtitle: Text(acc['email'], style: const TextStyle(fontSize: 11)),
@@ -391,19 +390,22 @@ class _ProfilePageState extends State<ProfilePage> {
     return docs;
   }
 
-  Widget _buildMedia(String url) {
-    bool isVideoFile = url.toLowerCase().contains('.mp4');
+  // FIX 2: VIDEO THUMBNAIL KA FIX - ab photo jaisa hi video ka thumb dikhega
+  Widget _buildMedia(String url, bool isVideo) {
     if (url.isEmpty) {
-      return Container(color: Colors.grey[300], child: const Center(child: Icon(Icons.videocam, color: Colors.black54, size: 28)));
-    }
-    if (isVideoFile) {
-      return Container(color: Colors.black, child: Stack(fit: StackFit.expand, children: [Container(color: Colors.grey[900]), const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 36))]));
+      return Container(
+        color: Colors.grey[900],
+        child: Stack(fit: StackFit.expand, children: [
+          Container(color: Colors.black),
+          const Center(child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 40))
+        ]),
+      );
     }
     return CachedNetworkImage(
       imageUrl: url,
       fit: BoxFit.cover,
       placeholder: (_, __) => Container(color: Colors.grey[300], child: const Center(child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))),
-      errorWidget: (_, __, ___) => Container(color: Colors.grey[900], child: const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 30))),
+      errorWidget: (_, __, ___) => Container(color: Colors.grey[900], child: const Center(child: Icon(Icons.broken_image, color: Colors.white54))),
     );
   }
 
@@ -463,8 +465,25 @@ class _ProfilePageState extends State<ProfilePage> {
                       if (snap.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)));
                       var docs = _sortDocs(snap.data!.docs);
                       return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: docs.length, itemBuilder: (_, i) {
-                          var doc = docs[i]; var d = doc.data() as Map<String, dynamic>; String url = (d['mediaUrl']?? d['imageUrl']?? d['videoUrl']?? d['thumbnail']?? '').toString(); bool isVideo = d['isVideo'] == true || url.toLowerCase().contains('.mp4') || d['videoUrl']!= null;
-                          return GestureDetector(onTap: () { if (isVideo) Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: docs))); }, child: Stack(fit: StackFit.expand, children: [_buildMedia(url), if (isVideo) Container(color: Colors.black26), Positioned(top: 4, right: 4, child: InkWell(onTap: () => _deletePost(doc.id, d), child: Container(padding: const EdgeInsets.all(5), decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle), child: const Icon(Icons.delete, size: 14, color: Colors.white))))]));
+                          var doc = docs[i];
+                          var d = doc.data() as Map<String, dynamic>;
+                          String thumb = (d['thumbnail']?? d['thumbUrl']?? '').toString();
+                          String videoUrl = (d['videoUrl']?? '').toString();
+                          String mediaUrl = (d['mediaUrl']?? d['imageUrl']?? '').toString();
+                          bool isVideo = d['isVideo'] == true || videoUrl.isNotEmpty || mediaUrl.toLowerCase().contains('.mp4');
+                          String displayUrl = isVideo? (thumb.isNotEmpty? thumb : mediaUrl) : mediaUrl;
+                          // Agar displayUrl abhi bhi mp4 hai to khali chhod do taki play icon dikhe
+                          if(displayUrl.toLowerCase().contains('.mp4')) displayUrl = thumb;
+
+                          return GestureDetector(
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: docs))),
+                            child: Stack(fit: StackFit.expand, children: [
+                              _buildMedia(displayUrl, isVideo),
+                              if (isVideo) Container(color: Colors.black26),
+                              if (isVideo) const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 28)),
+                              Positioned(top: 4, right: 4, child: InkWell(onTap: () => _deletePost(doc.id, d), child: Container(padding: const EdgeInsets.all(5), decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle), child: const Icon(Icons.delete, size: 14, color: Colors.white))))
+                            ])
+                          );
                         });
                     },
                   ),
@@ -472,11 +491,23 @@ class _ProfilePageState extends State<ProfilePage> {
                     stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: user?.uid).snapshots(),
                     builder: (c, snap) {
                       if (!snap.hasData) return const Center(child: CircularProgressIndicator(color: Colors.black));
-                      var all = _sortDocs(snap.data!.docs); var reels = all.where((doc) { var d = doc.data() as Map<String, dynamic>; var url = (d['mediaUrl']?? d['videoUrl']?? '').toString(); return d['isVideo'] == true || url.toLowerCase().contains('.mp4') || d['videoUrl']!= null; }).toList();
+                      var all = _sortDocs(snap.data!.docs);
+                      var reels = all.where((doc) { var d = doc.data() as Map<String, dynamic>; var url = (d['mediaUrl']?? d['videoUrl']?? '').toString(); return d['isVideo'] == true || url.toLowerCase().contains('.mp4') || d['videoUrl']!= null; }).toList();
                       if (reels.isEmpty) return const Center(child: Text("Abhi koi Reel nahi", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)));
                       return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: reels.length, itemBuilder: (_, i) {
-                          var doc = reels[i]; var d = doc.data() as Map<String, dynamic>; String thumb = (d['thumbnail']?? d['mediaUrl']?? d['videoUrl']?? '').toString();
-                          return GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: reels))), child: Stack(fit: StackFit.expand, children: [_buildMedia(thumb), Container(color: Colors.black26), const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 32)), Positioned(top: 4, right: 4, child: InkWell(onTap: () => _deletePost(doc.id, d), child: Container(padding: const EdgeInsets.all(5), decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle), child: const Icon(Icons.delete, size: 14, color: Colors.white))))]));
+                          var doc = reels[i];
+                          var d = doc.data() as Map<String, dynamic>;
+                          String thumb = (d['thumbnail']?? d['thumbUrl']?? d['mediaUrl']?? '').toString();
+                          if(thumb.toLowerCase().contains('.mp4')) thumb = (d['thumbnail']?? '').toString();
+                          return GestureDetector(
+                            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(initialIndex: i, myReels: reels))),
+                            child: Stack(fit: StackFit.expand, children: [
+                              _buildMedia(thumb, true),
+                              Container(color: Colors.black26),
+                              const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 32)),
+                              Positioned(top: 4, right: 4, child: InkWell(onTap: () => _deletePost(doc.id, d), child: Container(padding: const EdgeInsets.all(5), decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle), child: const Icon(Icons.delete, size: 14, color: Colors.white))))
+                            ])
+                          );
                         });
                     },
                   ),
