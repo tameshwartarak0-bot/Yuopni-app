@@ -1,7 +1,7 @@
 name: Build Yuopni APK
 on:
   push:
-    branches: [ master ]
+    branches: [ main, master ]
 
 jobs:
   build:
@@ -32,7 +32,8 @@ jobs:
           echo "storePassword=yuopni123" > android/key.properties
           echo "keyPassword=yuopni123" >> android/key.properties
           echo "keyAlias=yuopni" >> android/key.properties
-          echo "storeFile=upload-keystore.jks" >> android/key.properties
+          echo "storeFile=app/upload-keystore.jks" >> android/key.properties
+          cat android/key.properties
 
       - name: Show SHA1
         run: keytool -list -v -keystore android/app/upload-keystore.jks -alias yuopni -storepass yuopni123 | grep SHA1
