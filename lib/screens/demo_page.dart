@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'main_screen.dart';
-import 'login_page.dart';
+import '../main.dart'; // AuthGate ke liye
 
 class DemoPage extends StatefulWidget {
   const DemoPage({super.key});
@@ -25,21 +23,12 @@ class _DemoPageState extends State<DemoPage> {
     await prefs.setBool('seenDemo', true);
     if (!mounted) return;
 
-    final user = FirebaseAuth.instance.currentUser;
-
-    if (user!= null) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => MainScreen()),
-        (route) => false,
-      );
-    } else {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => LoginPage()),
-        (route) => false,
-      );
-    }
+    // Ab direct MainScreen nahi, AuthGate pe jayega jo login check karega
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const AuthGate()),
+      (route) => false,
+    );
   }
 
   @override
@@ -53,77 +42,87 @@ class _DemoPageState extends State<DemoPage> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: Column(children: [
-          Expanded(
-            child: PageView.builder(
-              controller: _controller,
-              onPageChanged: (i) => setState(() => _current = i),
-              itemCount: demos.length,
-              itemBuilder: (_, i) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(30),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(demos[i]['icon']!, style: const TextStyle(fontSize: 90)),
-                      const SizedBox(height: 30),
-                      Text(
-                        demos[i]['title']!,
-                        style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center
-                      ),
-                      const SizedBox(height: 15),
-                      Text(
-                        demos[i]['desc']!,
-                        style: const TextStyle(fontSize: 16, color: Colors.grey),
-                        textAlign: TextAlign.center
-                      ),
-                    ]
+        child: Column(
+          children: [
+            Expanded(
+              child: PageView.builder(
+                controller: _controller,
+                onPageChanged: (i) => setState(() => _current = i),
+                itemCount: demos.length,
+                itemBuilder: (_, i) => Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(30),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(demos[i]['icon']!, style: const TextStyle(fontSize: 90)),
+                        const SizedBox(height: 30),
+                        Text(
+                          demos[i]['title']!,
+                          style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 15),
+                        Text(
+                          demos[i]['desc']!,
+                          style: const TextStyle(fontSize: 16, color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(3, (i) => AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              margin: const EdgeInsets.all(4),
-              width: _current == i? 24 : 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: _current == i? Colors.pink : Colors.white24,
-                borderRadius: BorderRadius.circular(10)
-              )
-            ))
-          ),
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Row(children: [
-              TextButton(
-                onPressed: _finishDemo,
-                child: const Text("Skip", style: TextStyle(color: Colors.white, fontSize: 16))
-              ),
-              const Spacer(),
-              ElevatedButton(
-                onPressed: () {
-                  if (_current == 2) {
-                    _finishDemo();
-                  } else {
-                    _controller.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.pink,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(3, (i) => AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                margin: const EdgeInsets.all(4),
+                width: _current == i? 24 : 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _current == i? Colors.pink : Colors.white24,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text(_current == 2? "Start" : "Next", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              )),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Row(
+                children: [
+                  TextButton(
+                    onPressed: _finishDemo,
+                    child: const Text("Skip", style: TextStyle(color: Colors.white, fontSize: 16)),
+                  ),
+                  const Spacer(),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (_current == 2) {
+                        _finishDemo();
+                      } else {
+                        _controller.nextPage(
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeInOut,
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.pink,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                    ),
+                    child: Text(
+                      _current == 2? "Start" : "Next",
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
               ),
-            ]),
-          ),
-        ]),
+            ),
+          ],
+        ),
       ),
     );
   }
