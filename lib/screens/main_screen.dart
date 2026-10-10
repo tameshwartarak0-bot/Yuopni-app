@@ -22,19 +22,34 @@ class _MainScreenState extends State<MainScreen> {
   int _index = 0;
   DateTime? _lastBackPress;
 
+  bool _checkLogin() {
+    if (fb_auth.FirebaseAuth.instance.currentUser == null) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => LoginPage()));
+      return false;
+    }
+    return true;
+  }
+
   void _onTap(int i) {
+    // 1 = Create
     if (i == 1) {
-      pauseReelsNotifier.value = true; // Reel ka audio band
+      if (!_checkLogin()) return; // <-- Guest hai to Login khulega
+      pauseReelsNotifier.value = true;
       showModalBottomSheet(
         context: context,
         backgroundColor: Colors.black,
         builder: (_) => CreateSheet()
       ).whenComplete(() {
-        pauseReelsNotifier.value = false; // Sheet band to wapas play
+        pauseReelsNotifier.value = false;
       });
       return;
     }
-    // Reel tab se hat rahe ho to bhi pause
+
+    // 3 = Message, 4 = Profile -> Login check
+    if (i == 3 || i == 4) {
+      if (!_checkLogin()) return;
+    }
+
     pauseReelsNotifier.value = (i != 2);
     setState(() => _index = i > 1 ? i - 1 : i);
   }
