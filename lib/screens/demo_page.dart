@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'main_screen.dart';
-import 'login_page.dart'; // FIX: screens/ hataya
+import 'login_page.dart';
 
 class DemoPage extends StatefulWidget {
   const DemoPage({super.key});
@@ -25,12 +25,21 @@ class _DemoPageState extends State<DemoPage> {
     await prefs.setBool('seenDemo', true);
     if (!mounted) return;
 
-    // CHANGE: Login ho ya na ho, hamesha MainScreen khulega - bina login ke bhi demo chalega
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => MainScreen()),
-      (route) => false
-    );
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user!= null) {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => MainScreen()),
+        (route) => false,
+      );
+    } else {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => LoginPage()),
+        (route) => false,
+      );
+    }
   }
 
   @override
