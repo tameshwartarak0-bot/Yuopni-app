@@ -74,11 +74,13 @@ class _YuopniAppState extends State<YuopniApp> {
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-      home: widget.seenDemo? const AuthGate() : const DemoPage(),
+      // FIX: seenDemo true hai to seedha MainScreen (Guest Mode), AuthGate nahi
+      home: widget.seenDemo? MainScreen() : const DemoPage(),
     );
   }
 }
 
+// Ye abhi use nahi hoga, rehne do future ke liye
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
   @override
