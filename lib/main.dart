@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart' as fb_auth;
 import 'package:supabase_flutter/supabase_flutter.dart' hide User;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/demo_page.dart';
 import 'screens/main_screen.dart';
+import 'screens/login_page.dart';
 import 'screens/reel_page.dart';
 
 void main() async {
@@ -15,11 +17,14 @@ void main() async {
     url: 'https://aynsnbgulloedotmjlcq.supabase.co',
     anonKey: 'sb_publishable_nFfjqpnLm5FUZD7GbVXlYw_X3vkM_sj',
   );
-  runApp(const YuopniApp());
+  final prefs = await SharedPreferences.getInstance();
+  final seenDemo = prefs.getBool('seenDemo')?? false;
+  runApp(YuopniApp(seenDemo: seenDemo));
 }
 
 class YuopniApp extends StatefulWidget {
-  const YuopniApp({super.key});
+  final bool seenDemo;
+  const YuopniApp({super.key, required this.seenDemo});
   @override
   State<YuopniApp> createState() => _YuopniAppState();
 }
@@ -69,25 +74,27 @@ class _YuopniAppState extends State<YuopniApp> {
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-      home: StreamBuilder<fb_auth.User?>(
-        stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              backgroundColor: Colors.black,
-              body: Center(child: CircularProgressIndicator(color: Colors.white)),
-            );
-          }
-          // Login hai to sidha MainScreen
-          if (snapshot.hasData) {
-            return MainScreen();
-          }
-          // Login nahi hai to DemoPage
-          else {
-            return const DemoPage();
-          }
-        },
-      ),
+      home: widget.seenDemo? const AuthGate() : const DemoPage(),
+    );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<fb_auth.User?>(
+      stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(child: CircularProgressIndicator(color: Colors.white)),
+          );
+        }
+        if (snapshot.hasData) return MainScreen();
+        return LoginPage();
+      },
     );
   }
 }
