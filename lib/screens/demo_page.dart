@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../main.dart'; // AuthGate ke liye
+import 'main_screen.dart'; // FIX: AuthGate nahi, MainScreen
 
 class DemoPage extends StatefulWidget {
   const DemoPage({super.key});
@@ -23,10 +23,10 @@ class _DemoPageState extends State<DemoPage> {
     await prefs.setBool('seenDemo', true);
     if (!mounted) return;
 
-    // Ab direct MainScreen nahi, AuthGate pe jayega jo login check karega
+    // GUEST MODE: Bina login ke MainScreen khulega
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (_) => const AuthGate()),
+      MaterialPageRoute(builder: (_) => MainScreen()),
       (route) => false,
     );
   }
