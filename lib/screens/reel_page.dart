@@ -5,7 +5,7 @@ import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
 import 'package:share_plus/share_plus.dart';
 import 'main_screen.dart';
-import 'login_page.dart'; // <-- ADD
+import 'login_page.dart';
 
 class ReelPage extends StatefulWidget {
   final int initialIndex;
@@ -33,15 +33,21 @@ class _ReelPageState extends State<ReelPage> {
     super.dispose();
   }
 
+  // FIX 1: DUPLICATE HATANE KA FINAL LOGIC
   List<DocumentSnapshot> _onlyVideos(List<DocumentSnapshot> docs) {
-    return docs.where((doc) {
+    Map<String, DocumentSnapshot> uniqueMap = {};
+    for (var doc in docs) {
       var d = doc.data() as Map<String, dynamic>?;
-      if (d == null) return false;
+      if (d == null) continue;
       String media = (d['mediaUrl']?? '').toString().toLowerCase();
-      String vUrl = (d['videoUrl']?? '').toString();
+      String vUrl = (d['videoUrl']?? '').toString().toLowerCase();
       bool isVideo = d['isVideo'] == true;
-      return isVideo || vUrl.isNotEmpty || media.contains('.mp4') || media.contains('video');
-    }).toList();
+      bool isVid = isVideo || vUrl.isNotEmpty || media.contains('.mp4') || media.contains('video') || media.contains('m3u8');
+      if (isVid) {
+        uniqueMap[doc.id] = doc; // same id ko overwrite -> repeat khatam
+      }
+    }
+    return uniqueMap.values.toList();
   }
 
   @override
@@ -59,7 +65,7 @@ class _ReelPageState extends State<ReelPage> {
             var doc = filtered[i];
             var data = (doc.data() as Map<String, dynamic>?)?? {};
             return ReelItem(
-              key: ValueKey(doc.id),
+              key: ValueKey(doc.id + "_$i"), // FIX 2: unique key
               docId: doc.id,
               data: data,
               showBack: true,
@@ -88,7 +94,7 @@ class _ReelPageState extends State<ReelPage> {
             onPageChanged: (i) => setState(() => _currentIndex = i),
             itemCount: filtered.length,
             itemBuilder: (c, i) => ReelItem(
-              key: ValueKey(filtered[i].id),
+              key: ValueKey(filtered[i].id + "_$i"), // FIX 2
               docId: filtered[i].id,
               data: filtered[i].data() as Map<String, dynamic>,
               showBack: false,
@@ -112,7 +118,7 @@ class ReelItem extends StatefulWidget {
 }
 
 class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin {
-  @override bool get wantKeepAlive => false;
+  @override bool get wantKeepAlive => true; // FIX 3: false se true kiya
 
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
@@ -174,7 +180,6 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     super.dispose();
   }
 
-  // FIX: Login check helper
   bool _requireLogin() {
     if (FirebaseAuth.instance.currentUser == null) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => LoginPage()));
@@ -184,7 +189,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
   }
 
   void _toggleLike() async {
-    if (!_requireLogin()) return; // <-- LOGIN CHECK
+    if (!_requireLogin()) return;
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     setState(() { _liked =!_liked; _likeCount = _liked? _likeCount + 1 : _likeCount - 1; });
@@ -206,18 +211,18 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
   }
 
   void _showYuopniShareSheet() {
-    if (!_requireLogin()) return; // <-- LOGIN CHECK
+    if (!_requireLogin()) return;
     String? myUid = FirebaseAuth.instance.currentUser?.uid;
     showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1E1E1E), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (_) => Container(height: 450, padding: const EdgeInsets.all(12), child: Column(children: [Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))), const SizedBox(height: 12), const Text("Yuopni pe Share karo", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)), const SizedBox(height: 12), Expanded(child: StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('chats').where('participants', arrayContains: myUid).snapshots(), builder: (c,snap){ if(snap.connectionState==ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.pink)); if(!snap.hasData || snap.data!.docs.isEmpty) return const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.message, color: Colors.white24, size: 50), SizedBox(height: 10), Text("Koi chat nahi hai", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54))])); var docs = snap.data!.docs; return ListView.builder(itemCount: docs.length, itemBuilder: (_,i){ var d = docs[i].data() as Map<String,dynamic>; List parts = d['participants']??[]; if(parts.length<2) return const SizedBox(); String otherUid = parts[0]==myUid? parts[1]: parts[0]; String otherName = (d['userNames']?[otherUid]?? "User").toString(); String otherPhoto = (d['userPhotos']?[otherUid]?? "").toString(); return ListTile(leading: CircleAvatar(radius: 22, backgroundImage: otherPhoto.isNotEmpty? NetworkImage(otherPhoto): null), title: Text(otherName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), trailing: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.pink, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))), onPressed: () async { Navigator.pop(context); await _sendReelToChat(docs[i].id, otherName); }, child: const Text("Send"))); }); }))]))); }
 
   void _onShare() {
-    if (!_requireLogin()) return; // <-- LOGIN CHECK
+    if (!_requireLogin()) return;
     final String videoLink = "https://yuopni-1c5e9.web.app/video?id=${widget.docId}";
     showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1A1A1A), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (_) => Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10))), const SizedBox(height: 15), ListTile(leading: const CircleAvatar(backgroundColor: Colors.orange, child: Icon(Icons.message, color: Colors.white)), title: const Text("Yuopni Message me bhejo", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), onTap: (){ Navigator.pop(context); _showYuopniShareSheet(); }), ListTile(leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.share, color: Colors.white)), title: const Text("WhatsApp pe bhejo", style: TextStyle(color: Colors.white)), subtitle: Text(videoLink, style: const TextStyle(color: Colors.white54, fontSize: 12)), onTap: (){ Navigator.pop(context); Share.share("Yuopni pe ye Reel dekho 🔥 $videoLink"); }), const SizedBox(height: 10)])));
   }
 
   void _openComment() {
-    if (!_requireLogin()) return; // <-- LOGIN CHECK
+    if (!_requireLogin()) return;
     showModalBottomSheet(context: context, backgroundColor: Colors.grey[900], builder: (_) => CommentSheet(reelId: widget.docId));
   }
 
@@ -227,7 +232,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     return Container(color: Colors.black, child: Stack(fit: StackFit.expand, children: [
       _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 50))
       : _isInit && _videoController!= null && _chewieController!= null
-   ? GestureDetector(onTap: (){ setState(() => _showControls =!_showControls); if(_videoController!.value.isPlaying) _videoController!.pause(); else _videoController!.play(); }, child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: Chewie(controller: _chewieController!))))
+  ? GestureDetector(onTap: (){ setState(() => _showControls =!_showControls); if(_videoController!.value.isPlaying) _videoController!.pause(); else _videoController!.play(); }, child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: Chewie(controller: _chewieController!))))
       : const Center(child: CircularProgressIndicator(color: Colors.white)),
       if (_isInit && _videoController!= null &&!_videoController!.value.isPlaying) const Center(child: Icon(Icons.play_arrow, size: 80, color: Colors.white70)),
       if (_isInit && _videoController!= null) Positioned(bottom: 0, left: 0, right: 0, child: VideoProgressIndicator(_videoController!, allowScrubbing: true, colors: const VideoProgressColors(playedColor: Colors.pink, bufferedColor: Colors.white24, backgroundColor: Colors.white10))),
