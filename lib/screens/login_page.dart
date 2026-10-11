@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'demo_page.dart';
 import 'phone_login_page.dart';
+import 'main_screen.dart'; // FIX ke liye add kiya
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -23,8 +24,10 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _loginWithGmail() async {
     setState(() => _loading = true);
     try {
+      // Pehle signout karna jaruri hai warna account picker nahi khulega
       await _googleSignIn.signOut();
-      await _auth.signOut();
+      // await _auth.signOut(); // <-- HATA DIYA, yahi logout kara raha tha
+
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
         setState(() => _loading = false);
@@ -40,15 +43,15 @@ class _LoginPageState extends State<LoginPage> {
       if (user!= null) {
         var snap = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         bool hasUsername = false;
-        if(snap.exists){
-          var data = snap.data() as Map<String,dynamic>?;
-          if(data!= null && data['username']!= null && data['username'].toString().isNotEmpty){
+        if (snap.exists) {
+          var data = snap.data() as Map<String, dynamic>?;
+          if (data!= null && data['username']!= null && data['username'].toString().isNotEmpty) {
             hasUsername = true;
           }
         }
 
         if (!snap.exists ||!hasUsername) {
-          if(mounted){
+          if (mounted) {
             setState(() => _loading = false);
             _showUsernameDialog(user);
             return;
@@ -56,7 +59,7 @@ class _LoginPageState extends State<LoginPage> {
         } else {
           await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
             'email': user.email,
-            'name': (snap.data() as Map)['username'], // edited naam hi name rahega
+            'name': (snap.data() as Map)['username'],
             'googleName': user.displayName,
             'photo': user.photoURL,
             'photoURL': user.photoURL,
@@ -64,15 +67,27 @@ class _LoginPageState extends State<LoginPage> {
           }, SetOptions(merge: true));
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('seenDemo', true);
+
+          // FIX 1: Login ke baad MainScreen par wapas
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => MainScreen()),
+              (r) => false,
+            );
+          }
         }
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Login Error: $e"), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Login Error: $e"), backgroundColor: Colors.red)
+        );
+      }
     }
     if (mounted) setState(() => _loading = false);
   }
 
-  // 2nd PHOTO JAISA POPUP - ID SET KARNE KA
   void _showUsernameDialog(User user) {
     TextEditingController usernameCtrl = TextEditingController(text: user.displayName?? "");
     showDialog(
@@ -86,14 +101,12 @@ class _LoginPageState extends State<LoginPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Flutter logo jaisa icon
               Icon(Icons.flutter_dash, size: 60, color: Colors.blue),
               SizedBox(height: 15),
               Text("Choose your ID", style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w500)),
               SizedBox(height: 8),
               Text("to continue to yuopni", style: TextStyle(color: Colors.white70, fontSize: 14)),
               SizedBox(height: 25),
-              // Input field Google account list jaisa
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(10)),
@@ -107,8 +120,8 @@ class _LoginPageState extends State<LoginPage> {
                     icon: CircleAvatar(
                       radius: 18,
                       backgroundColor: Colors.deepOrange,
-                      backgroundImage: user.photoURL!=null? NetworkImage(user.photoURL!): null,
-                      child: user.photoURL==null? Text(user.displayName?[0]??"T", style: TextStyle(color: Colors.white)): null,
+                      backgroundImage: user.photoURL!= null? NetworkImage(user.photoURL!) : null,
+                      child: user.photoURL == null? Text(user.displayName?[0]?? "T", style: TextStyle(color: Colors.white)) : null,
                     ),
                   ),
                 ),
@@ -119,7 +132,12 @@ class _LoginPageState extends State<LoginPage> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, padding: EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black,
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))
+                  ),
                   onPressed: () async {
                     String newUsername = usernameCtrl.text.trim();
                     if (newUsername.length < 3) {
@@ -135,13 +153,13 @@ class _LoginPageState extends State<LoginPage> {
                     }
 
                     List<String> searchKeys = [];
-                    for(int i=1; i<=newUsername.length; i++) searchKeys.add(newUsername.substring(0,i).toLowerCase());
-                    for(int i=1; i<=usernameLower.length; i++) searchKeys.add(usernameLower.substring(0,i));
+                    for (int i = 1; i <= newUsername.length; i++) searchKeys.add(newUsername.substring(0, i).toLowerCase());
+                    for (int i = 1; i <= usernameLower.length; i++) searchKeys.add(usernameLower.substring(0, i));
 
                     await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
                       'uid': user.uid,
                       'email': user.email,
-                      'name': newUsername, // YAHI TAMESHWAR TARAK KI JAGAH SHOW HOGA
+                      'name': newUsername,
                       'username': usernameLower,
                       'displayName': newUsername,
                       'googleName': user.displayName,
@@ -155,7 +173,16 @@ class _LoginPageState extends State<LoginPage> {
 
                     final prefs = await SharedPreferences.getInstance();
                     await prefs.setBool('seenDemo', true);
-                    if(mounted) Navigator.pop(context);
+
+                    // FIX 2: ID banane ke baad MainScreen
+                    if (mounted) {
+                      Navigator.pop(context); // dialog band
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => MainScreen()),
+                        (r) => false,
+                      );
+                    }
                   },
                   child: Text("Continue", style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
@@ -191,14 +218,44 @@ class _LoginPageState extends State<LoginPage> {
               const Text("Yuopni", style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.white)),
               const Text("Real Gmail + Mobile Login - Firebase Secure", style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 50),
-              _loading? const CircularProgressIndicator(color: Colors.pink)
-              : Column(children: [
-                  SizedBox(width: double.infinity, child: ElevatedButton.icon(icon: Image.network("https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg", height: 20), label: const Text("Continue with Gmail", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))), onPressed: _loginWithGmail)),
-                  const SizedBox(height: 15),
-                  const Row(children: [Expanded(child: Divider(color: Colors.white24)), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text("OR", style: TextStyle(color: Colors.grey))), Expanded(child: Divider(color: Colors.white24))]),
-                  const SizedBox(height: 15),
-                  SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.phone_android, color: Colors.white), label: const Text("Continue with Mobile Number", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15), side: const BorderSide(color: Colors.white), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PhoneLoginPage())))),
-                ]),
+              _loading
+                 ? const CircularProgressIndicator(color: Colors.pink)
+                  : Column(children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          icon: Image.network("https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg", height: 20),
+                          label: const Text("Continue with Gmail", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))
+                          ),
+                          onPressed: _loginWithGmail
+                        )
+                      ),
+                      const SizedBox(height: 15),
+                      const Row(children: [
+                        Expanded(child: Divider(color: Colors.white24)),
+                        Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text("OR", style: TextStyle(color: Colors.grey))),
+                        Expanded(child: Divider(color: Colors.white24))
+                      ]),
+                      const SizedBox(height: 15),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.phone_android, color: Colors.white),
+                          label: const Text("Continue with Mobile Number", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            side: const BorderSide(color: Colors.white),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))
+                          ),
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PhoneLoginPage()))
+                        )
+                      ),
+                    ]),
             ],
           ),
         ),
