@@ -18,27 +18,33 @@ jobs:
         with:
           flutter-version: '3.29.3'
           channel: 'stable'
+
       - name: Decode Keystore
         run: |
           base64 --decode android/app/keystore.b64 > android/app/upload-keystore.jks
           ls -lh android/app/*.jks
+
       - name: Create key.properties
         run: |
           echo "storePassword=yuopni123" > android/key.properties
           echo "keyPassword=yuopni123" >> android/key.properties
           echo "keyAlias=yuopni" >> android/key.properties
           echo "storeFile=upload-keystore.jks" >> android/key.properties
+
       - run: flutter pub get
       - run: flutter build apk --release --split-per-abi
+
+      # --- FIX 1: APK upload (corrupt fix) ---
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: yuopni-apk-${{ github.run_number }}
           path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          compression-level: 0
           retention-days: 7
 
-      # --- APK: Sirf 3 latest rakhega ---
-      - name: Keep last 3 APKs
+      # --- FIX 2: Sirf 3 latest APK rakhega ---
+      - name: Keep last 3 APKs, delete old
         uses: actions/github-script@v7
         with:
           script: |
@@ -50,48 +56,57 @@ jobs:
             });
             let arts = data.artifacts.filter(a => a.name.startsWith('yuopni-apk-'));
             arts.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+            console.log(`Total APKs: ${arts.length}`);
             const toDelete = arts.slice(3);
             for (const art of toDelete) {
-              console.log(`Deleting APK: ${art.name}`);
+              console.log(`Deleting old: ${art.name}`);
               await github.rest.actions.deleteArtifact({
                 owner, repo,
                 artifact_id: art.id
               });
             }
 
-      # --- FIX: Sabhi purane workflow runs delete (niche wale) ---
-      - name: Delete old workflow runs - keep only last 5
+      # --- FIX 3: Purane workflow runs (niche wale) auto delete ---
+      - name: Delete old workflow runs
         uses: actions/github-script@v7
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            
-            // 1. Isi workflow (Build Yuopni APK) ke purane runs delete
-            const runs1 = await github.paginate(github.rest.actions.listWorkflowRuns, {
+
+            // Is workflow ke sirf 5 latest rakho
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
               owner, repo,
               workflow_id: 'apk.yml',
               per_page: 100
             });
-            runs1.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-            const toDelete1 = runs1.slice(5); // sirf 5 latest rakho
-            for (const run of toDelete1) {
-              console.log(`Deleting old APK run: ${run.id} - ${run.created_at}`);
+            runs.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+            const toDeleteRuns = runs.slice(5);
+            for (const run of toDeleteRuns) {
+              console.log(`Deleting run: ${run.id} - ${run.created_at}`);
               try {
-                await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
-              } catch(e) { console.log(e.message) }
+                await github.rest.actions.deleteWorkflowRun({
+                  owner, repo,
+                  run_id: run.id
+                });
+              } catch(e) {
+                console.log(`Skip: ${e.message}`);
+              }
             }
 
-            // 2. Saare workflows ke total purane runs bhi delete (Deploy wale bhi)
+            // Total repo me sirf 10 latest runs rakho, baaki sab niche wale delete (Deploy wale bhi)
             const allRuns = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
               owner, repo,
               per_page: 100
             });
             allRuns.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-            const toDeleteAll = allRuns.slice(15); // total sirf 15 latest rakho, baaki sab niche wale delete
-            console.log(`Total runs: ${allRuns.length}, Deleting: ${toDeleteAll.length}`);
+            const toDeleteAll = allRuns.slice(10);
+            console.log(`Total all runs: ${allRuns.length}, Deleting extra: ${toDeleteAll.length}`);
             for (const run of toDeleteAll) {
               try {
-                await github.rest.actions.deleteWorkflowRun({ owner, repo, run_id: run.id });
+                await github.rest.actions.deleteWorkflowRun({
+                  owner, repo,
+                  run_id: run.id
+                });
               } catch(e) {}
             }
