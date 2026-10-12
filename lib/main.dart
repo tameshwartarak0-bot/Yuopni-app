@@ -52,6 +52,7 @@ class _YuopniAppState extends State<YuopniApp> {
     if (!isOurLink) return;
     String? videoId = uri.queryParameters['id']?.trim();
     if (videoId == null || videoId.isEmpty) return;
+
     for (int i = 0; i < 20; i++) {
       if (_navigatorKey.currentState!= null) break;
       await Future.delayed(const Duration(milliseconds: 300));
@@ -60,7 +61,9 @@ class _YuopniAppState extends State<YuopniApp> {
       var doc = await FirebaseFirestore.instance.collection('posts').doc(videoId).get();
       if (!doc.exists || doc.data() == null) return;
       if (_navigatorKey.currentState!= null) {
-        _navigatorKey.currentState!.push(MaterialPageRoute(builder: (_) => ReelPage(myReels: [doc], initialIndex: 0)));
+        _navigatorKey.currentState!.push(
+          MaterialPageRoute(builder: (_) => ReelPage(myReels: [doc], initialIndex: 0))
+        );
       }
     } catch (e) {
       debugPrint("DeepLink error: $e");
@@ -73,18 +76,32 @@ class _YuopniAppState extends State<YuopniApp> {
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-      home: widget.seenDemo
-         ? MainScreen()
-          : StreamBuilder<fb_auth.User?>(
-              stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
-              builder: (c, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
-                }
-                if (snap.data!= null) return MainScreen();
-                return const DemoPage();
-              },
-            ),
+
+      // --- FINAL LOGOUT FIX ---
+      home: StreamBuilder<fb_auth.User?>(
+        stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snap) {
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              backgroundColor: Colors.black,
+              body: Center(child: CircularProgressIndicator(color: Colors.white))
+            );
+          }
+
+          // 1. Agar user login hai (Gmail se), to hamesha MainScreen dikhao
+          if (snap.hasData && snap.data!= null) {
+            return MainScreen();
+          }
+
+          // 2. Agar user login nahi hai, par usne Demo dekh liya hai, to bhi MainScreen (Guest)
+          if (widget.seenDemo) {
+            return MainScreen();
+          }
+
+          // 3. Tabhi DemoPage dikhao jab na login hai, na seenDemo hai
+          return const DemoPage();
+        },
+      ),
     );
   }
 }
