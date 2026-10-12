@@ -7,7 +7,6 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide User;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/demo_page.dart';
 import 'screens/main_screen.dart';
-import 'screens/login_page.dart';
 import 'screens/reel_page.dart';
 
 void main() async {
@@ -74,29 +73,18 @@ class _YuopniAppState extends State<YuopniApp> {
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-      // FIX: seenDemo true hai to seedha MainScreen (Guest Mode), AuthGate nahi
-      home: widget.seenDemo? MainScreen() : const DemoPage(),
-    );
-  }
-}
-
-// Ye abhi use nahi hoga, rehne do future ke liye
-class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<fb_auth.User?>(
-      stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            backgroundColor: Colors.black,
-            body: Center(child: CircularProgressIndicator(color: Colors.white)),
-          );
-        }
-        if (snapshot.hasData) return MainScreen();
-        return LoginPage();
-      },
+      home: widget.seenDemo
+         ? MainScreen()
+          : StreamBuilder<fb_auth.User?>(
+              stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
+              builder: (c, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+                if (snap.data!= null) return MainScreen();
+                return const DemoPage();
+              },
+            ),
     );
   }
 }
