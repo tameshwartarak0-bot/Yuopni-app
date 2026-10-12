@@ -33,21 +33,26 @@ class _ReelPageState extends State<ReelPage> {
     super.dispose();
   }
 
-  // FIX 1: DUPLICATE HATANE KA FINAL LOGIC
+  // --- FIX: REPEAT REEL BUG 100% FIX ---
+  // Pehle doc.id se check karta tha, ab videoUrl se check karega
   List<DocumentSnapshot> _onlyVideos(List<DocumentSnapshot> docs) {
-    Map<String, DocumentSnapshot> uniqueMap = {};
+    Map<String, DocumentSnapshot> uniqueByUrl = {};
     for (var doc in docs) {
       var d = doc.data() as Map<String, dynamic>?;
       if (d == null) continue;
-      String media = (d['mediaUrl']?? '').toString().toLowerCase();
-      String vUrl = (d['videoUrl']?? '').toString().toLowerCase();
-      bool isVideo = d['isVideo'] == true;
-      bool isVid = isVideo || vUrl.isNotEmpty || media.contains('.mp4') || media.contains('video') || media.contains('m3u8');
-      if (isVid) {
-        uniqueMap[doc.id] = doc; // same id ko overwrite -> repeat khatam
+      String url = (d['videoUrl']?? d['mediaUrl']?? '').toString().trim();
+      if (url.isEmpty) continue;
+
+      String lower = url.toLowerCase();
+      bool isVideo = d['isVideo'] == true || lower.contains('.mp4') || lower.contains('video') || lower.contains('m3u8') || (d['videoUrl']?? '').toString().isNotEmpty;
+      if (!isVideo) continue;
+
+      // Same URL ko dobara add nahi karega
+      if (!uniqueByUrl.containsKey(url)) {
+        uniqueByUrl[url] = doc;
       }
     }
-    return uniqueMap.values.toList();
+    return uniqueByUrl.values.toList();
   }
 
   @override
@@ -65,7 +70,7 @@ class _ReelPageState extends State<ReelPage> {
             var doc = filtered[i];
             var data = (doc.data() as Map<String, dynamic>?)?? {};
             return ReelItem(
-              key: ValueKey(doc.id + "_$i"), // FIX 2: unique key
+              key: ValueKey(doc.id + "_${i}_my"), // FIX: Unique key
               docId: doc.id,
               data: data,
               showBack: true,
@@ -94,7 +99,7 @@ class _ReelPageState extends State<ReelPage> {
             onPageChanged: (i) => setState(() => _currentIndex = i),
             itemCount: filtered.length,
             itemBuilder: (c, i) => ReelItem(
-              key: ValueKey(filtered[i].id + "_$i"), // FIX 2
+              key: ValueKey(filtered[i].id + "_$i"), // FIX: Unique key
               docId: filtered[i].id,
               data: filtered[i].data() as Map<String, dynamic>,
               showBack: false,
@@ -118,7 +123,7 @@ class ReelItem extends StatefulWidget {
 }
 
 class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin {
-  @override bool get wantKeepAlive => true; // FIX 3: false se true kiya
+  @override bool get wantKeepAlive => true; // FIX: false se true kiya - isse video reload nahi hoga
 
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
