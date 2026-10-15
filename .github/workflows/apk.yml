@@ -29,21 +29,21 @@ jobs:
           echo "storePassword=yuopni123" > android/key.properties
           echo "keyPassword=yuopni123" >> android/key.properties
           echo "keyAlias=yuopni" >> android/key.properties
-          echo "storeFile=upload-keystore.jks" >> android/key.properties
+          echo "storeFile=app/upload-keystore.jks" >> android/key.properties
+          cat android/key.properties
 
       - run: flutter pub get
-      - run: flutter build apk --release --split-per-abi
+      - run: flutter build apk --release
 
-      # --- FIX 1: APK upload (corrupt fix) ---
+      # FIX: Universal APK upload karo, split wala nahi
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: yuopni-apk-${{ github.run_number }}
-          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           compression-level: 0
           retention-days: 7
 
-      # --- FIX 2: Sirf 3 latest APK rakhega ---
       - name: Keep last 3 APKs, delete old
         uses: actions/github-script@v7
         with:
@@ -56,25 +56,20 @@ jobs:
             });
             let arts = data.artifacts.filter(a => a.name.startsWith('yuopni-apk-'));
             arts.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-            console.log(`Total APKs: ${arts.length}`);
             const toDelete = arts.slice(3);
             for (const art of toDelete) {
-              console.log(`Deleting old: ${art.name}`);
               await github.rest.actions.deleteArtifact({
                 owner, repo,
                 artifact_id: art.id
               });
             }
 
-      # --- FIX 3: Purane workflow runs (niche wale) auto delete ---
       - name: Delete old workflow runs
         uses: actions/github-script@v7
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-
-            // Is workflow ke sirf 5 latest rakho
             const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
               owner, repo,
               workflow_id: 'apk.yml',
@@ -83,26 +78,6 @@ jobs:
             runs.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
             const toDeleteRuns = runs.slice(5);
             for (const run of toDeleteRuns) {
-              console.log(`Deleting run: ${run.id} - ${run.created_at}`);
-              try {
-                await github.rest.actions.deleteWorkflowRun({
-                  owner, repo,
-                  run_id: run.id
-                });
-              } catch(e) {
-                console.log(`Skip: ${e.message}`);
-              }
-            }
-
-            // Total repo me sirf 10 latest runs rakho, baaki sab niche wale delete (Deploy wale bhi)
-            const allRuns = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-              owner, repo,
-              per_page: 100
-            });
-            allRuns.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-            const toDeleteAll = allRuns.slice(10);
-            console.log(`Total all runs: ${allRuns.length}, Deleting extra: ${toDeleteAll.length}`);
-            for (const run of toDeleteAll) {
               try {
                 await github.rest.actions.deleteWorkflowRun({
                   owner, repo,
