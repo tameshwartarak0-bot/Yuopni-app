@@ -29,13 +29,12 @@ jobs:
           echo "storePassword=yuopni123" > android/key.properties
           echo "keyPassword=yuopni123" >> android/key.properties
           echo "keyAlias=yuopni" >> android/key.properties
-          echo "storeFile=app/upload-keystore.jks" >> android/key.properties
+          echo "storeFile=upload-keystore.jks" >> android/key.properties
           cat android/key.properties
 
       - run: flutter pub get
       - run: flutter build apk --release
 
-      # FIX: Universal APK upload karo, split wala nahi
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
