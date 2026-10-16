@@ -25,6 +25,7 @@ class _CameraPageState extends State<CameraPage> {
   String _mode="Reel";
   Timer? _timer; int _sec=0;
   String _song="No Song";
+  String? _currentSongUrl; // FIX: URL bhi save karenge
   double _songStart=0;
   final AudioPlayer _audio = AudioPlayer();
   bool _songPlaying=false;
@@ -32,8 +33,7 @@ class _CameraPageState extends State<CameraPage> {
   String _search = "";
   Map<String,String> _cacheUrls = {};
 
-  // Bahut sare iPhone filters
-  int _selectedFilter = 1; // Default iPhone filter
+  int _selectedFilter = 1;
   final List<Map<String, dynamic>> _filters = [
     {"name": "Original", "filter": const ColorFilter.mode(Colors.transparent, BlendMode.multiply)},
     {"name": "iPhone", "filter": const ColorFilter.matrix([1.12, 0, 0, 0, 5, 0, 1.08, 0, 0, 8, 0, 0, 1.05, 0, 10, 0, 0, 0, 1, 0])},
@@ -45,7 +45,7 @@ class _CameraPageState extends State<CameraPage> {
     {"name": "Cinematic", "filter": const ColorFilter.matrix([1.0, 0, 0, 0, -10, 0, 1.0, 0, 0, -5, 0, 0, 1.1, 0, 0, 0, 0, 0, 1, 0])},
   ];
 
-  @override void initState(){ super.initState(); _initCamOnce(); }
+  @override void initState(){ super.initState(); _initCamOnce(); _audio.setReleaseMode(ReleaseMode.loop); }
 
   Future<void> _initCamOnce() async {
     var camStatus = await Permission.camera.status;
@@ -126,7 +126,7 @@ class _CameraPageState extends State<CameraPage> {
   Future<void> _toggleRec() async {
     if(_isRec){
       final f=await _cam!.stopVideoRecording();
-      _stopTimer(); setState((){_isRec=false; _file=f;}); _preview();
+      _stopTimer(); setState((){_isRec=false; _file=f;}); await _preview();
     }else{
       await _cam!.startVideoRecording();
       _startTimer(); setState(()=>_isRec=true);
@@ -150,22 +150,31 @@ class _CameraPageState extends State<CameraPage> {
     return "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
   }
 
+  // FIX 1: Preview sahi kiya
   Future<void> _preview() async {
     if(_file==null) return;
-    _vCtrl?.dispose();
-    _vCtrl=VideoPlayerController.file(File(_file!.path))..initialize().then((_)=>setState((){
-      _vCtrl!.setLooping(true); _vCtrl!.play();
-      if(_song!="No Song") _playSongWithVideo();
-    }));
+    await _vCtrl?.dispose();
+    _vCtrl = VideoPlayerController.file(File(_file!.path));
+    await _vCtrl!.initialize();
+    await _vCtrl!.setLooping(true);
+    await _vCtrl!.play();
+    if(mounted) setState((){});
+    if(_song!="No Song") await _playSongWithVideo();
   }
 
+  // FIX 2: Song + Video sync sahi kiya
   Future<void> _playSongWithVideo() async {
-    String url = await _getRealUrl(_song);
-    await _audio.stop();
-    await _audio.play(UrlSource(url));
-    await Future.delayed(const Duration(milliseconds:200));
-    await _audio.seek(Duration(seconds: _songStart.toInt()));
-    if(mounted) setState(()=>_songPlaying=true);
+    try{
+      String url = await _getRealUrl(_song);
+      _currentSongUrl = url; // URL save
+      await _audio.stop();
+      await _audio.setSourceUrl(url);
+      await _audio.seek(Duration(seconds: _songStart.toInt()));
+      await _audio.resume();
+      if(mounted) setState(()=>_songPlaying=true);
+    }catch(e){
+      print("Song play error $e");
+    }
   }
 
   Future<void> _pickGallery() async {
@@ -175,7 +184,7 @@ class _CameraPageState extends State<CameraPage> {
     }
     final p=ImagePicker();
     XFile? f = _mode!="Story"? await p.pickVideo(source: ImageSource.gallery, maxDuration: Duration(minutes: _mode=="Video"?90:15)) : await p.pickImage(source: ImageSource.gallery);
-    if(f!=null){ setState(()=>_file=f); if(f.path.endsWith(".mp4")) _preview(); }
+    if(f!=null){ setState(()=>_file=f); if(f.path.endsWith(".mp4")) await _preview(); }
   }
 
   void _pickSong(){
@@ -205,7 +214,11 @@ class _CameraPageState extends State<CameraPage> {
                   return ListTile(
                     leading: Icon(Icons.music_note, color: selected?Colors.pink:Colors.white54),
                     title: Text(filtered[i], style: TextStyle(color: selected?Colors.pink:Colors.white)),
-                    trailing: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: selected?Colors.green:Colors.pink), onPressed: (){ setState(()=>_song=filtered[i]); Navigator.pop(context); if(_file!=null) _playSongWithVideo(); }, child: Text(selected?"Using":"Use")),
+                    trailing: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: selected?Colors.green:Colors.pink), onPressed: () async {
+                      setState(()=>_song=filtered[i]);
+                      Navigator.pop(context);
+                      if(_file!=null) await _playSongWithVideo();
+                    }, child: Text(selected?"Using":"Use")),
                   );
                 }
               )),
@@ -225,7 +238,7 @@ class _CameraPageState extends State<CameraPage> {
         appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text("${_vCtrl!=null?_fmt(_vCtrl!.value.position.inSeconds):_fmt(_sec)} - $_song", style: const TextStyle(fontSize: 14))),
         body: Column(children:[
           Expanded(child: _file!.path.endsWith(".mp4")? (_vCtrl?.value.isInitialized==true? VideoPlayer(_vCtrl!) : const Center(child: CircularProgressIndicator())) : Image.file(File(_file!.path), fit: BoxFit.contain)),
-          Padding(padding: const EdgeInsets.all(16), child: Row(children:[Expanded(child: OutlinedButton(onPressed: (){ _vCtrl?.dispose(); _audio.stop(); setState(()=>_file=null); }, child: const Text("Retake", style: TextStyle(color: Colors.white)))), const SizedBox(width:12), Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green), onPressed: (){ _audio.stop(); Navigator.pushReplacement(context, MaterialPageRoute(builder: (_)=> UploadPage(prefile: File(_file!.path), isVideo: true, isLong: _mode=="Video", songName: "$_song @${_songStart.toInt()}s"))); }, child: const Text("Next")))]))
+          Padding(padding: const EdgeInsets.all(16), child: Row(children:[Expanded(child: OutlinedButton(onPressed: (){ _vCtrl?.dispose(); _audio.stop(); setState(()=>_file=null); }, child: const Text("Retake", style: TextStyle(color: Colors.white)))), const SizedBox(width:12), Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green), onPressed: (){ _audio.stop(); Navigator.pushReplacement(context, MaterialPageRoute(builder: (_)=> UploadPage(prefile: File(_file!.path), isVideo: true, isLong: _mode=="Video", songName: _song, songUrl: _currentSongUrl?? ""))); }, child: const Text("Next")))]))
         ]),
       );
     }
@@ -252,7 +265,6 @@ class _CameraPageState extends State<CameraPage> {
         Positioned(bottom:30,left:0,right:0,child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children:[
           GestureDetector(onTap: _pickGallery, child: const Column(children:[Icon(Icons.photo_library, color: Colors.white, size:32), SizedBox(height:4), Text("Gallery", style: TextStyle(color: Colors.white, fontSize:12))])),
           GestureDetector(onTap: _mode=="Story"? _takePhoto : _toggleRec, onLongPress: _mode!="Story"? _toggleRec : null, child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: _isRec?Colors.red:Colors.white, width:4)), child: Container(padding: const EdgeInsets.all(30), decoration: BoxDecoration(color: _isRec?Colors.red:Colors.white, shape: BoxShape.circle), child: Icon(_mode=="Story"?Icons.camera_alt:Icons.videocam, size:32, color: Colors.black)))),
-          // SIRF BEAUTY BUTTON - CLICK PE FILTERS
           GestureDetector(
             onTap: _showBeautyFilters,
             child: Column(children:[
