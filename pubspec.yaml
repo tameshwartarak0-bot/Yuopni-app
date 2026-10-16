@@ -35,6 +35,7 @@ dependencies:
   just_audio: ^0.9.36
   visibility_detector: ^0.4.0+2
   video_thumbnail: ^0.5.3
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:
