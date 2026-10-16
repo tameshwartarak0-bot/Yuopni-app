@@ -27,17 +27,23 @@ class _ReelPageState extends State<ReelPage> {
     _pageController.dispose();
     super.dispose();
   }
+
+  // FIX: Kharab url wale posts ko yahi filter kar diya
   List<DocumentSnapshot> _onlyVideos(List<DocumentSnapshot> docs) {
     Map<String, DocumentSnapshot> uniqueByUrl = {};
     for (var doc in docs) {
       var d = doc.data() as Map<String, dynamic>?;
       if (d == null) continue;
-      String url = (d['videoUrl']?? d['mediaUrl']?? '').toString().trim();
+      String url = (d['videoUrl']?? d['mediaUrl']?? d['videoURL']?? '').toString().trim();
+      // FIX: http se start nahi hai ya /data se start hai toh ye purana kharab post hai, skip karo
       if (url.isEmpty) continue;
+      if (!url.startsWith('http')) continue;
+      if (url.startsWith('/data')) continue;
       if (!uniqueByUrl.containsKey(url)) uniqueByUrl[url] = doc;
     }
     return uniqueByUrl.values.toList();
   }
+
   @override Widget build(BuildContext context) {
     if (widget.myReels!= null && widget.myReels!.isNotEmpty) {
       var filtered = _onlyVideos(widget.myReels!);
@@ -73,7 +79,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid!= null) _liked = (widget.data['likes'] as List?)?.contains(uid)?? false;
 
-    if (url.isNotEmpty && url.contains('http')) {
+    if (url.isNotEmpty && url.startsWith('http')) {
       _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
       _videoController!.initialize().then((_) {
         if (!mounted) return;
@@ -83,15 +89,15 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
           _playReel(songUrl);
         }
       }).catchError((e) { if (mounted) setState(() => _isError = true); });
-    } else _isError = true;
+    } else {
+      _isError = true;
+    }
     pauseReelsNotifier.addListener(_handleGlobalPause);
   }
 
-  // FINAL FIX: Yahi tera main logic hai
   Future<void> _playReel(String songUrl) async {
     if (_videoController == null) return;
     if (songUrl.isNotEmpty) {
-      // Song add hai -> Video ka sound band + Song chalao
       await _videoController!.setVolume(0);
       try {
         await _songPlayer.setUrl(songUrl);
@@ -100,7 +106,6 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
         await _songPlayer.play();
       } catch(e) {}
     } else {
-      // Song nahi hai -> Video ka original sound chalao
       await _videoController!.setVolume(1.0);
       await _songPlayer.stop();
     }
@@ -187,7 +192,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     String songName = (widget.data['songName']?? 'Original audio - $username').toString();
     String userPhoto = (widget.data['userPhoto']?? '').toString();
     return Container(color: Colors.black, child: Stack(fit: StackFit.expand, children: [
-      _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 50)) : _isInit && _videoController!= null && _chewieController!= null? GestureDetector(onTap: (){ if(_videoController!.value.isPlaying) { _videoController!.pause(); _songPlayer.pause(); } else { _videoController!.play(); _songPlayer.play(); } }, child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: Chewie(controller: _chewieController!)))) : const Center(child: CircularProgressIndicator(color: Colors.white)),
+      _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white24, size: 40)) : _isInit && _videoController!= null && _chewieController!= null? GestureDetector(onTap: (){ if(_videoController!.value.isPlaying) { _videoController!.pause(); _songPlayer.pause(); } else { _videoController!.play(); _songPlayer.play(); } }, child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: Chewie(controller: _chewieController!)))) : const Center(child: CircularProgressIndicator(color: Colors.white)),
       Positioned(bottom: 35, left: 15, right: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [CircleAvatar(radius: 16, backgroundImage: userPhoto.isNotEmpty? NetworkImage(userPhoto): null), const SizedBox(width: 8), Text("@$username", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]), const SizedBox(height: 8), if(caption.isNotEmpty) Text(caption, maxLines: 2, style: const TextStyle(color: Colors.white)), Row(children: [const Icon(Icons.music_note, color: Colors.white, size: 14), const SizedBox(width: 5), Expanded(child: Text(songName, maxLines: 1, style: const TextStyle(color: Colors.white, fontSize: 12)))]),
       ])),
       Positioned(right: 5, bottom: 90, child: Column(children: [IconButton(icon: Icon(_liked? Icons.favorite : Icons.favorite_border, color: _liked? Colors.red : Colors.white, size: 32), onPressed: _toggleLike), Text("$_likeCount", style: const TextStyle(color: Colors.white, fontSize: 12)), const SizedBox(height: 15), IconButton(icon: const Icon(Icons.comment_outlined, color: Colors.white, size: 28), onPressed: _openComment), const Text("Comment", style: TextStyle(color: Colors.white, fontSize: 10)), const SizedBox(height: 15), IconButton(icon: const Icon(Icons.share, color: Colors.white, size: 28), onPressed: _onShare), const Text("Share", style: TextStyle(color: Colors.white, fontSize: 10))])),
