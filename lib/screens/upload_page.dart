@@ -19,7 +19,7 @@ class UploadPage extends StatefulWidget {
   final bool? isVideo;
   final bool? isLong;
   final String? songName;
-  final String? songUrl; // FIX: Ye add kiya
+  final String? songUrl; // <-- Ye add kiya, isse camera_page wala error khatam hoga
   const UploadPage({super.key, this.prefile, this.isVideo, this.isLong, this.songName, this.songUrl});
   @override State<UploadPage> createState() => _UploadPageState();
 }
@@ -34,7 +34,7 @@ class _UploadPageState extends State<UploadPage> {
   double _progress = 0;
   VideoPlayerController? _previewCtrl;
   String _song = "No Song";
-  String _songUrl = ""; // FIX: URL store
+  String _songUrl = "";
   final Trimmer _trimmer = Trimmer();
   double _startValue = 0.0;
   double _endValue = 0.0;
@@ -95,7 +95,6 @@ class _UploadPageState extends State<UploadPage> {
 
   String _fmt(int sec){ final m = sec ~/ 60; final s = sec % 60; return "$m:${s.toString().padLeft(2,'0')}"; }
 
-  // FIX: Video load sahi kiya
   Future<void> _loadVideo(File file) async {
     await _trimmer.loadVideo(videoFile: file);
     await _previewCtrl?.dispose();
@@ -143,10 +142,7 @@ class _UploadPageState extends State<UploadPage> {
                 }),
                 onTap: () async {
                   String url = await _getRealUrl(name);
-                  setState((){
-                    _song = name;
-                    _songUrl = url;
-                  });
+                  setState((){ _song = name; _songUrl = url; });
                   Navigator.pop(context);
                   await _audioPlayer.stop();
                   await _audioPlayer.setUrl(url);
@@ -199,7 +195,7 @@ class _UploadPageState extends State<UploadPage> {
         'title': title, 'title_search': title.toLowerCase(), 'title_lower': title.toLowerCase(),
         'description': _descCtrl.text.trim(),
         'songName': _song,
-        'songUrl': _songUrl, // FIX: Ab songUrl bhi save hoga
+        'songUrl': _songUrl,
         'mediaUrl': url, 'videoUrl': url, 'imageUrl': url, 'thumbnail': url,
         'isVideo': _isVideo, 'isLongVideo': _isLongVideo,
         'duration': _endValue>0? (_endValue - _startValue).toInt() : _previewCtrl?.value.duration.inSeconds?? 0,
@@ -226,7 +222,7 @@ class _UploadPageState extends State<UploadPage> {
       backgroundColor: Colors.black,
       appBar: AppBar(title: Text(_isLongVideo? "Long 90m ${_song!="No Song"?"+ $_song":""}" : "Upload ${_song!="No Song"?"- $_song":""}"), backgroundColor: Colors.black, foregroundColor: Colors.white),
       body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(children:[
-        if(_song!="No Song") Container(width:double.infinity, padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.pink.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.pink)), child: Row(children:[const Icon(Icons.music_note, color: Colors.pink, size:16), const SizedBox(width:6), Expanded(child: Text("$_song selected", style: const TextStyle(color: Colors.pink, fontWeight: FontWeight.bold))), IconButton(icon: const Icon(Icons.close, color: Colors.pink, size: 16), onPressed: (){ _audioPlayer.stop(); setState(()=> { _song="No Song", _songUrl="" }); })])),
+        if(_song!="No Song") Container(width:double.infinity, padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.pink.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.pink)), child: Row(children:[const Icon(Icons.music_note, color: Colors.pink, size:16), const SizedBox(width:6), Expanded(child: Text("$_song selected", style: const TextStyle(color: Colors.pink, fontWeight: FontWeight.bold))), IconButton(icon: const Icon(Icons.close, color: Colors.pink, size: 16), onPressed: (){ _audioPlayer.stop(); setState(()=> _song="No Song"); setState(()=> _songUrl=""); })])),
         const SizedBox(height:12),
         TextField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Title *", labelStyle: const TextStyle(color: Colors.white54), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)))),
         const SizedBox(height:12),
@@ -239,17 +235,15 @@ class _UploadPageState extends State<UploadPage> {
         const SizedBox(height:12),
         if(_showTrimmer)
           Column(children: [
-            const Text("30 Sec Trimmer - drag karke kaato", style: TextStyle(color: Colors.white, fontSize: 12)),
+            const Text("30 Sec Trimmer", style: TextStyle(color: Colors.white, fontSize: 12)),
             const SizedBox(height: 8),
             TrimViewer(trimmer: _trimmer, viewerHeight: 50, viewerWidth: MediaQuery.of(context).size.width - 32, maxVideoLength: const Duration(seconds: 30), onChangeStart: (v)=> _startValue=v, onChangeEnd: (v)=> _endValue=v, onChangePlaybackState: (playing){ if(playing) _previewCtrl?.play(); else _previewCtrl?.pause(); }),
-            Text("${_startValue.toStringAsFixed(1)}s - ${_endValue.toStringAsFixed(1)}s (Max 30s)", style: const TextStyle(color: Colors.white70, fontSize: 11)),
-            const SizedBox(height: 12),
           ]),
         Row(children:[Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickImage, child: const Text("Photo"))), const SizedBox(width:6), Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickVideo, child: const Text("Reel 15m"))), const SizedBox(width:6), Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickLongVideo, style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text("Long 90m")))]),
         const SizedBox(height:20),
-        if(_isUploading) Column(children:[LinearProgressIndicator(value: _progress/100, minHeight: 8, color: _isLongVideo?Colors.red:Colors.green, backgroundColor: Colors.white24), const SizedBox(height:10), Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai... $_song", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
+        if(_isUploading) LinearProgressIndicator(value: _progress/100, minHeight: 8),
         const SizedBox(height:10),
-        SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _isUploading?null:_upload, style: ElevatedButton.styleFrom(backgroundColor: _isLongVideo?Colors.red:Colors.white, foregroundColor: _isLongVideo?Colors.white:Colors.black, padding: const EdgeInsets.symmetric(vertical:14)), child: Text(_isUploading? "${_progress.toStringAsFixed(0)}%..." : "Upload Karo"))),
+        SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _isUploading?null:_upload, child: Text(_isUploading? "${_progress.toStringAsFixed(0)}%..." : "Upload Karo"))),
       ])),
     );
   }
