@@ -16,14 +16,11 @@ void main() async {
     url: 'https://aynsnbgulloedotmjlcq.supabase.co',
     anonKey: 'sb_publishable_nFfjqpnLm5FUZD7GbVXlYw_X3vkM_sj',
   );
-  final prefs = await SharedPreferences.getInstance();
-  final seenDemo = prefs.getBool('seenDemo')?? false;
-  runApp(YuopniApp(seenDemo: seenDemo));
+  runApp(const YuopniApp());
 }
 
 class YuopniApp extends StatefulWidget {
-  final bool seenDemo;
-  const YuopniApp({super.key, required this.seenDemo});
+  const YuopniApp({super.key});
   @override
   State<YuopniApp> createState() => _YuopniAppState();
 }
@@ -53,21 +50,24 @@ class _YuopniAppState extends State<YuopniApp> {
     String? videoId = uri.queryParameters['id']?.trim();
     if (videoId == null || videoId.isEmpty) return;
 
-    for (int i = 0; i < 20; i++) {
-      if (_navigatorKey.currentState!= null) break;
-      await Future.delayed(const Duration(milliseconds: 300));
-    }
+    // Navigator ready hone ka wait - loop ki jagah simple delay
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (_navigatorKey.currentState == null) return;
+
     try {
       var doc = await FirebaseFirestore.instance.collection('posts').doc(videoId).get();
       if (!doc.exists || doc.data() == null) return;
-      if (_navigatorKey.currentState!= null) {
-        _navigatorKey.currentState!.push(
-          MaterialPageRoute(builder: (_) => ReelPage(myReels: [doc], initialIndex: 0))
-        );
-      }
+      _navigatorKey.currentState!.push(
+        MaterialPageRoute(builder: (_) => ReelPage(myReels: [doc], initialIndex: 0)),
+      );
     } catch (e) {
       debugPrint("DeepLink error: $e");
     }
+  }
+
+  Future<bool> _getSeenDemo() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('seenDemo')?? false;
   }
 
   @override
@@ -76,30 +76,38 @@ class _YuopniAppState extends State<YuopniApp> {
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(scaffoldBackgroundColor: Colors.black),
-
-      // --- FINAL LOGOUT FIX ---
       home: StreamBuilder<fb_auth.User?>(
         stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
+        builder: (context, authSnap) {
+          if (authSnap.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               backgroundColor: Colors.black,
-              body: Center(child: CircularProgressIndicator(color: Colors.white))
+              body: Center(child: CircularProgressIndicator(color: Colors.white)),
             );
           }
 
-          // 1. Agar user login hai (Gmail se), to hamesha MainScreen dikhao
-          if (snap.hasData && snap.data!= null) {
+          // 1. Login hai toh seedha MainScreen - chahe recent clear bhi ho
+          if (authSnap.hasData && authSnap.data!= null) {
             return MainScreen();
           }
 
-          // 2. Agar user login nahi hai, par usne Demo dekh liya hai, to bhi MainScreen (Guest)
-          if (widget.seenDemo) {
-            return MainScreen();
-          }
-
-          // 3. Tabhi DemoPage dikhao jab na login hai, na seenDemo hai
-          return const DemoPage();
+          // 2. Login nahi hai toh seenDemo check karo
+          return FutureBuilder<bool>(
+            future: _getSeenDemo(),
+            builder: (context, demoSnap) {
+              if (demoSnap.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                  backgroundColor: Colors.black,
+                  body: Center(child: CircularProgressIndicator(color: Colors.white)),
+                );
+              }
+              bool seenDemo = demoSnap.data?? false;
+              if (seenDemo) {
+                return MainScreen(); // Guest mode
+              }
+              return const DemoPage();
+            },
+          );
         },
       ),
     );
