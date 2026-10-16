@@ -47,7 +47,6 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
 
-    // 4 = Profile me login check nahi - _buildProfileTab khud handle karega
     pauseReelsNotifier.value = (i != 2);
     setState(() => _index = i > 1 ? i - 1 : i);
   }
@@ -72,20 +71,32 @@ class _MainScreenState extends State<MainScreen> {
     return true;
   }
 
+  // FINAL FIX - Recent clear par LoginPage flash khatam
   Widget _buildProfileTab() {
     return StreamBuilder<fb_auth.User?>(
       stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // FIX: Waiting me LoginPage mat dikhao, warna recent clear par logout lagega
+        // Agar Firebase check kar raha hai
         if (snapshot.connectionState == ConnectionState.waiting) {
+          // Lekin phone me user pehle se hai toh seedha Profile dikhao
+          if (fb_auth.FirebaseAuth.instance.currentUser != null) {
+            return const ProfilePage();
+          }
           return const Scaffold(
             backgroundColor: Colors.black,
             body: Center(child: CircularProgressIndicator(color: Colors.white)),
           );
         }
+
         if (snapshot.hasData && snapshot.data != null) {
-          return ProfilePage();
+          return const ProfilePage();
         }
+
+        // Flash rokne ke liye double check
+        if (fb_auth.FirebaseAuth.instance.currentUser != null) {
+          return const ProfilePage();
+        }
+
         return const LoginPage();
       },
     );
@@ -111,7 +122,11 @@ class _MainScreenState extends State<MainScreen> {
             IconButton(icon: const Icon(Icons.notifications), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationPage()))),
           ],
         ),
-        body: pages[_index],
+        // FINAL FIX 2 - IndexedStack se page reload nahi hoga
+        body: IndexedStack(
+          index: _index,
+          children: pages,
+        ),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _index == 0 ? 0 : _index + 1,
           onTap: _onTap,
