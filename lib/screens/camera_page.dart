@@ -1,223 +1,191 @@
 import 'dart:io';
-import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:dio/dio.dart' as dio;
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:video_player/video_player.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:video_trimmer/video_trimmer.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:http/http.dart' as http;
-import 'upload_page.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../global.dart';
 import '../data/songs_data.dart';
 
-class CameraPage extends StatefulWidget {
-  const CameraPage({super.key});
-  @override State<CameraPage> createState() => _CameraPageState();
+class UploadPage extends StatefulWidget {
+  final File? prefile;
+  final bool? isVideo;
+  final bool? isLong;
+  final String? songName;
+  final String? songUrl; // FIX 1: ye missing tha
+  const UploadPage({super.key, this.prefile, this.isVideo, this.isLong, this.songName, this.songUrl});
+  @override State<UploadPage> createState() => _UploadPageState();
 }
 
-class _CameraPageState extends State<CameraPage> {
-  CameraController? _cam;
-  List<CameraDescription> _cameras = [];
-  int _selectedCam = 0;
-  bool _init=false,_isRec=false;
-  XFile? _file;
-  String _mode="Reel";
-  Timer? _timer; int _sec=0;
-  String _song="No Song";
-  String? _currentSongUrl;
-  double _songStart=0;
-  final AudioPlayer _audio = AudioPlayer();
-  bool _songPlaying=false;
-  VideoPlayerController? _vCtrl;
-  String _search = "";
-  Map<String,String> _cacheUrls = {};
+class _UploadPageState extends State<UploadPage> {
+  final _titleCtrl = TextEditingController();
+  final _descCtrl = TextEditingController();
+  File? _file;
+  bool _isVideo = false;
+  bool _isLongVideo = false;
+  bool _isUploading = false;
+  double _progress = 0;
+  VideoPlayerController? _previewCtrl;
+  String _song = "No Song";
+  String _songUrl = "";
+  final Trimmer _trimmer = Trimmer();
+  double _startValue = 0.0;
+  double _endValue = 0.0;
+  bool _showTrimmer = false;
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
-  int _selectedFilter = 1;
-  final List<Map<String, dynamic>> _filters = [
-    {"name": "Original", "filter": const ColorFilter.mode(Colors.transparent, BlendMode.multiply)},
-    {"name": "iPhone", "filter": const ColorFilter.matrix([1.12, 0, 0, 0, 5, 0, 1.08, 0, 0, 8, 0, 0, 1.05, 0, 10, 0, 0, 0, 1, 0])},
-    {"name": "Clear", "filter": const ColorFilter.matrix([1.25, 0, 0, 0, 10, 0, 1.25, 0, 0, 10, 0, 0, 1.25, 0, 10, 0, 0, 0, 1, 0])},
-    {"name": "Fresh", "filter": const ColorFilter.matrix([1.1, 0, 0, 0, 15, 0, 1.15, 0, 0, 15, 0, 0, 1.1, 0, 20, 0, 0, 0, 1, 0])},
-    {"name": "Rosy", "filter": const ColorFilter.matrix([1.15, 0, 0, 0, 12, 0, 1.05, 0, 0, 5, 0, 0, 1.1, 0, 12, 0, 0, 0, 1, 0])},
-    {"name": "Bright", "filter": const ColorFilter.matrix([1.2, 0, 0, 0, 20, 0, 1.2, 0, 0, 20, 0, 0, 1.2, 0, 20, 0, 0, 0, 1, 0])},
-    {"name": "Natural", "filter": const ColorFilter.matrix([1.05, 0, 0, 0, 3, 0, 1.05, 0, 0, 3, 0, 0, 1.05, 0, 3, 0, 0, 0, 1, 0])},
-  ];
+  static const String cloudName = "b7qkm3lk";
+  static const String uploadPreset = "yuopni_upload";
+  final FlutterLocalNotificationsPlugin _notif = FlutterLocalNotificationsPlugin();
+  static const String bucketName = "yuopni-videos";
 
-  @override void initState(){ super.initState(); _initCamOnce(); _audio.setLoopMode(LoopMode.one); }
-
-  Future<void> _initCamOnce() async {
-    var camStatus = await Permission.camera.status;
-    var micStatus = await Permission.microphone.status;
-    if(camStatus!=PermissionStatus.granted) camStatus = await Permission.camera.request();
-    if(micStatus!=PermissionStatus.granted) micStatus = await Permission.microphone.request();
-    if(camStatus.isGranted && micStatus.isGranted){
-      _cameras = await availableCameras();
-      if(_cameras.isEmpty) return;
-      _selectedCam = 0;
-      _cam = CameraController(_cameras[_selectedCam], ResolutionPreset.high, enableAudio: true);
-      await _cam!.initialize();
-      if(mounted) setState(()=>_init=true);
+  @override
+  void initState() {
+    super.initState();
+    _initNotif();
+    if(widget.prefile!= null){
+      _file = widget.prefile;
+      _isVideo = widget.isVideo?? false;
+      _isLongVideo = widget.isLong?? false;
+      _song = widget.songName?? "No Song";
+      _songUrl = widget.songUrl?? "";
+      if(_isVideo && _file!=null) _loadVideo(_file!);
+      _descCtrl.text = _song!= "No Song"? "Song: $_song" : "";
     }
   }
 
-  Future<void> _switchCamera() async {
-    if(_cameras.length < 2) return;
-    setState(()=>_init=false);
-    _selectedCam = _selectedCam == 0? 1 : 0;
-    await _cam?.dispose();
-    _cam = CameraController(_cameras[_selectedCam], ResolutionPreset.high, enableAudio: true);
-    await _cam!.initialize();
-    if(mounted) setState(()=>_init=true);
+  Future<void> _initNotif() async {
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await _notif.initialize(const InitializationSettings(android: android));
   }
 
-  void _startTimer(){ _sec=0; _timer=Timer.periodic(const Duration(seconds:1),(_){ if(mounted) setState(()=>_sec++); }); }
-  void _stopTimer()=>_timer?.cancel();
-  String _fmt(int s)=> "${s~/60}:${(s%60).toString().padLeft(2,'0')}";
-
-  Future<void> _toggleRec() async {
-    if(_isRec){
-      final f=await _cam!.stopVideoRecording();
-      _stopTimer(); setState((){_isRec=false; _file=f;}); await _preview();
-    }else{
-      await _cam!.startVideoRecording();
-      _startTimer(); setState(()=>_isRec=true);
-    }
+  Future<void> _updateNotif(double p) async {
+    if (p < 0) p = 0; if (p > 100) p = 100;
+    try { globalUploadProgress.value = p; isUploadingGlobal.value = p < 100; } catch(e){}
+    await _notif.show(0, 'Yuopni Upload - ${p.toStringAsFixed(0)}%', p < 100? '${p.toStringAsFixed(0)}% $_song' : 'Upload Complete!', NotificationDetails(android: AndroidNotificationDetails('yuopni_upload','Yuopni Uploads', importance: Importance.low, ongoing: p < 100, autoCancel: p >= 100, showProgress: true, maxProgress: 100, progress: p.toInt(), onlyAlertOnce: true)));
   }
-  Future<void> _takePhoto() async { final f=await _cam!.takePicture(); setState(()=>_file=f); }
 
-  Future<String> _getRealUrl(String name) async {
-    if(_cacheUrls.containsKey(name)) return _cacheUrls[name]!;
-    try{
-      final res = await http.get(Uri.parse("https://itunes.apple.com/search?term=${Uri.encodeComponent(name)}&media=music&limit=1&country=in"));
-      if(res.statusCode==200){
-        final data = jsonDecode(res.body);
-        if(data['results']!=null && data['results'].length>0 && data['results'][0]['previewUrl']!=null){
-          String url = data['results'][0]['previewUrl'];
-          _cacheUrls[name]=url;
-          return url;
+  String _fmt(int sec){ final m = sec ~/ 60; final s = sec % 60; return "$m:${s.toString().padLeft(2,'0')}"; }
+
+  Future<void> _loadVideo(File file) async {
+    await _trimmer.loadVideo(videoFile: file);
+    _previewCtrl?.dispose();
+    _previewCtrl = VideoPlayerController.file(file)..initialize().then((_) {
+      if(mounted){
+        if(!_isLongVideo){
+          setState((){
+            _showTrimmer = true;
+            _endValue = _previewCtrl!.value.duration.inSeconds > 30? 30 : _previewCtrl!.value.duration.inSeconds.toDouble();
+          });
         }
+        _previewCtrl!.setLooping(true);
+        _previewCtrl!.play();
+        setState((){});
       }
-    }catch(_){}
-    return "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+    });
   }
 
-  Future<void> _preview() async {
-    if(_file==null) return;
-    await _vCtrl?.dispose();
-    _vCtrl = VideoPlayerController.file(File(_file!.path));
-    await _vCtrl!.initialize();
-    await _vCtrl!.setLooping(true);
-    // Agar song hai to video mute rakho
-    if(_song!="No Song") await _vCtrl!.setVolume(0);
-    await _vCtrl!.play();
-    if(mounted) setState((){});
-    if(_song!="No Song") await _playSongWithVideo();
+  Future<void> _pickImage() async { final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70); if(x!=null){ _previewCtrl?.dispose(); _previewCtrl=null; setState((){ _file=File(x.path); _isVideo=false; _isLongVideo=false; _showTrimmer=false; }); } }
+  Future<void> _pickVideo() async { final x = await ImagePicker().pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 15)); if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=false; }); await _loadVideo(f); } }
+  Future<void> _pickLongVideo() async { final x = await ImagePicker().pickVideo(source: ImageSource.gallery); if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=true; _showTrimmer=false; }); await _loadVideo(f); } }
+
+  Future<void> _selectSong() async {
+    String search = "";
+    showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.black, builder: (_){
+      return StatefulBuilder(builder: (c, setM){
+        var filtered = allSongs1000.where((s)=> s.toLowerCase().contains(search.toLowerCase())).take(150).toList();
+        return Container(height: MediaQuery.of(context).size.height * 0.85, padding: const EdgeInsets.all(12), child: Column(children: [Container(width:40,height:5,decoration: BoxDecoration(color: Colors.grey[700], borderRadius: BorderRadius.circular(10))), const SizedBox(height: 12), TextField(style: const TextStyle(color: Colors.white), decoration: InputDecoration(prefixIcon: const Icon(Icons.search, color: Colors.white54), hintText: "1000 songs me search...", hintStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: Colors.white10, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), onChanged: (v){ setM(()=> search=v); }), const SizedBox(height: 10), Expanded(child: ListView.builder(itemCount: filtered.length, itemBuilder: (ctx,i){ var name = filtered[i]; return ListTile(title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 14)), leading: Icon(name==_song? Icons.radio_button_checked : Icons.radio_button_off, color: Colors.pink), onTap: (){ setState(()=> _song = name); Navigator.pop(context); _audioPlayer.stop(); }); }))]));
+      });
+    });
   }
 
-  Future<void> _playSongWithVideo() async {
+  Future<String> _uploadToCloudinary(File file, bool isVideo, Function(double) onProgress) async {
+    dio.Dio dioClient = dio.Dio();
+    dio.FormData formData = dio.FormData.fromMap({'upload_preset': uploadPreset, 'file': await dio.MultipartFile.fromFile(file.path)});
+    var res = await dioClient.post("https://api.cloudinary.com/v1_1/$cloudName/${isVideo? "video" : "image"}/upload", data: formData, onSendProgress: (s,t){ if(t!=0){ double p=s/t*100; onProgress(p); _updateNotif(p); } });
+    return res.data['secure_url'];
+  }
+
+  Future<String> _uploadLongToSupabase(File file, Function(double) onProgress) async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final name = "${uid}_${DateTime.now().millisecondsSinceEpoch}.mp4";
+    final supa = Supabase.instance.client;
+    onProgress(10); await _updateNotif(10);
+    await supa.storage.from(bucketName).upload(name, file, fileOptions: const FileOptions(cacheControl: '3600', upsert: false));
+    onProgress(90); await _updateNotif(90);
+    final url = supa.storage.from(bucketName).getPublicUrl(name);
+    onProgress(100); await _updateNotif(100);
+    return url;
+  }
+
+  Future<void> _upload() async {
+    if (_file == null || _titleCtrl.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Title aur file dono chahiye"))); return; }
+    setState((){ _isUploading=true; _progress=0; });
+    try{ isUploadingGlobal.value=true; }catch(e){}
+    await _updateNotif(0);
     try{
-      String url = await _getRealUrl(_song);
-      _currentSongUrl = url;
-      await _audio.stop();
-      await _audio.setUrl(url);
-      await _audio.seek(Duration(seconds: _songStart.toInt()));
-      await _audio.play();
-      if(mounted) setState(()=>_songPlaying=true);
-    }catch(e){}
+      File fileToUpload = _file!;
+      // FIX 2: trimmedVideoFileName parameter hataya, v5 me nahi hai
+      if(_showTrimmer && _isVideo &&!_isLongVideo && _endValue > _startValue){
+        await _trimmer.saveTrimmedVideo(startValue: _startValue, endValue: _endValue, onSave: (path){ if(path!=null && path.isNotEmpty) fileToUpload = File(path); });
+        await Future.delayed(const Duration(milliseconds: 800));
+      }
+      String url;
+      if(_isLongVideo){ url=await _uploadLongToSupabase(fileToUpload, (p){ if(mounted) setState(()=>_progress=p); }); }
+      else { url=await _uploadToCloudinary(fileToUpload, _isVideo, (p){ if(mounted) setState(()=>_progress=p); }); }
+
+      String title=_titleCtrl.text.trim();
+      DocumentReference docRef=FirebaseFirestore.instance.collection('posts').doc();
+      String docId=docRef.id; String shareLink="https://yuopni.com/video?id=$docId";
+      await docRef.set({
+        'uid': FirebaseAuth.instance.currentUser!.uid,
+        'title': title, 'title_search': title.toLowerCase(), 'title_lower': title.toLowerCase(),
+        'description': _descCtrl.text.trim(), 'songName': _song, 'songUrl': _songUrl,
+        'mediaUrl': url, 'videoUrl': url, 'imageUrl': url, 'thumbnail': url,
+        'isVideo': _isVideo, 'isLongVideo': _isLongVideo,
+        'duration': _endValue>0? (_endValue - _startValue).toInt() : _previewCtrl?.value.duration.inSeconds?? 0,
+        'durationText': _endValue>0? _fmt((_endValue - _startValue).toInt()) : (_previewCtrl!=null? _fmt(_previewCtrl!.value.duration.inSeconds) : "0:00"),
+        'username': FirebaseAuth.instance.currentUser!.displayName?? "User",
+        'userPhoto': FirebaseAuth.instance.currentUser!.photoURL?? "",
+        'createdAt': FieldValue.serverTimestamp(),
+        'timestamp': FieldValue.serverTimestamp(),
+        'likes': [], 'views': 0, 'docId': docId, 'shareLink': shareLink,
+      });
+      await _notif.cancel(0);
+      try{ isUploadingGlobal.value=false; globalUploadProgress.value=0; }catch(e){}
+      _audioPlayer.stop();
+      if(mounted){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload ho gaya! $_song"))); Navigator.pop(context); }
+    }catch(e){ await _notif.cancel(0); try{ isUploadingGlobal.value=false; }catch(_){} if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"))); }
+    finally{ if(mounted) setState(()=>_isUploading=false); }
   }
 
-  Future<void> _pickGallery() async {
-    if(await Permission.photos.status!=PermissionStatus.granted){
-      await Permission.photos.request();
-      if(await Permission.storage.status!=PermissionStatus.granted) await Permission.storage.request();
-    }
-    final p=ImagePicker();
-    XFile? f = _mode!="Story"? await p.pickVideo(source: ImageSource.gallery, maxDuration: Duration(minutes: _mode=="Video"?90:15)) : await p.pickImage(source: ImageSource.gallery);
-    if(f!=null){ setState(()=>_file=f); if(f.path.endsWith(".mp4")) await _preview(); }
-  }
-
-  void _pickSong(){
-    showModalBottomSheet(
-      context: context, backgroundColor: const Color(0xFF111111), isScrollControlled: true,
-      builder: (_)=> StatefulBuilder(
-        builder: (context, setModal) {
-          List<String> filtered = _search.isEmpty? allSongs1000.take(200).toList() : allSongs1000.where((s) => s.toLowerCase().contains(_search.toLowerCase())).take(200).toList();
-          return DraggableScrollableSheet(
-            initialChildSize: 0.8, maxChildSize: 0.9, expand: false,
-            builder: (context, scroll) => Container(
-              padding: const EdgeInsets.all(12),
-              child: Column(children:[
-                Container(width:40,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(10))),
-                const SizedBox(height:10),
-                TextField(
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(hintText: "1000 songs me search...", hintStyle: const TextStyle(color: Colors.white54), prefixIcon: const Icon(Icons.search, color: Colors.white54), filled: true, fillColor: Colors.white10, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
-                  onChanged: (v){ setModal((){ _search=v; }); },
-                ),
-                const SizedBox(height:10),
-                Expanded(child: ListView.builder(
-                  controller: scroll, itemCount: filtered.length,
-                  itemBuilder: (_,i){
-                    bool selected = _song==filtered[i];
-                    return ListTile(
-                      leading: Icon(selected? Icons.radio_button_checked : Icons.radio_button_off, color: Colors.pink),
-                      title: Text(filtered[i], style: TextStyle(color: selected? Colors.pink : Colors.white, fontSize: 14)),
-                      trailing: IconButton(icon: const Icon(Icons.play_circle, color: Colors.white70), onPressed: () async {
-                        String url = await _getRealUrl(filtered[i]);
-                        await _audio.stop();
-                        await _audio.setUrl(url);
-                        await _audio.play();
-                      }),
-                      onTap: () async {
-                        String url = await _getRealUrl(filtered[i]);
-                        setState((){
-                          _song=filtered[i];
-                          _currentSongUrl=url;
-                        });
-                        Navigator.pop(context);
-                        await _audio.stop();
-                        await _audio.setUrl(url);
-                        await _audio.play();
-                        if(_file!=null && _vCtrl!=null) await _vCtrl!.setVolume(0);
-                      },
-                    );
-                  }
-                )),
-              ]),
-            ),
-          );
-        }
-      ),
-    );
-  }
-
-  void _showBeautyFilters(){
-    showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1A1A1A), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (_) => Container(padding: const EdgeInsets.all(16), height: 140, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Center(child: Container(width:40,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(10)))), const SizedBox(height:12), const Text("Beauty Filters", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height:12), Expanded(child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: _filters.length, itemBuilder: (_, i){ bool sel = _selectedFilter == i; return GestureDetector(onTap: (){ setState(()=>_selectedFilter=i); Navigator.pop(context); }, child: Container(margin: const EdgeInsets.only(right:10), child: Column(children:[Container(width:60,height:60, decoration: BoxDecoration(color: sel? Colors.pink : Colors.white24, shape: BoxShape.circle, border: Border.all(color: sel? Colors.pinkAccent : Colors.transparent, width:2)), child: Icon(Icons.face_retouching_natural, color: sel? Colors.white : Colors.white70)), const SizedBox(height:5), Text(_filters[i]['name'], style: TextStyle(color: sel? Colors.pink : Colors.white70, fontSize:12))]))) ;}))])));
-  }
-
-  @override void dispose(){ _cam?.dispose(); _vCtrl?.dispose(); _timer?.cancel(); _audio.dispose(); super.dispose(); }
+  @override void dispose(){ _previewCtrl?.dispose(); _audioPlayer.dispose(); _titleCtrl.dispose(); _descCtrl.dispose(); super.dispose(); }
 
   @override Widget build(BuildContext context){
-    if(_file!=null){
-      return Scaffold(
-        backgroundColor: Colors.black,
-        appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text("${_vCtrl!=null?_fmt(_vCtrl!.value.position.inSeconds):_fmt(_sec)} - $_song", style: const TextStyle(fontSize: 14))),
-        body: Column(children:[
-          Expanded(child: _file!.path.endsWith(".mp4")? (_vCtrl?.value.isInitialized==true? VideoPlayer(_vCtrl!) : const Center(child: CircularProgressIndicator())) : Image.file(File(_file!.path), fit: BoxFit.contain)),
-          Padding(padding: const EdgeInsets.all(16), child: Row(children:[Expanded(child: OutlinedButton(onPressed: (){ _vCtrl?.dispose(); _audio.stop(); setState(()=>_file=null); }, child: const Text("Retake", style: TextStyle(color: Colors.white)))), const SizedBox(width:12), Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green), onPressed: (){ _audio.stop(); Navigator.pushReplacement(context, MaterialPageRoute(builder: (_)=> UploadPage(prefile: File(_file!.path), isVideo: true, isLong: _mode=="Video", songName: _song, songUrl: _currentSongUrl?? ""))); }, child: const Text("Next")))]))
-        ]),
-      );
-    }
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text("Create $_mode"), leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> Navigator.pop(context)), actions: [IconButton(icon: const Icon(Icons.cameraswitch, color: Colors.white), onPressed: _switchCamera), if(_song!="No Song") Center(child: Text(_song, style: const TextStyle(color: Colors.pink, fontSize: 11))), IconButton(icon: const Icon(Icons.music_note, color: Colors.white), onPressed: _pickSong)]),
-      body: Stack(children:[
-        Positioned.fill(child: _init? ColorFiltered(colorFilter: _filters[_selectedFilter]['filter'], child: CameraPreview(_cam!)) : const Center(child: CircularProgressIndicator(color: Colors.white))),
-        Positioned(top:20,left:0,right:0,child: Row(mainAxisAlignment: MainAxisAlignment.center, children: ["Reel","Video","Story"].map((e)=> GestureDetector(onTap: ()=>setState(()=>_mode=e), child: Container(margin: const EdgeInsets.symmetric(horizontal:5), padding: const EdgeInsets.symmetric(horizontal:18,vertical:8), decoration: BoxDecoration(color: _mode==e?Colors.white:Colors.white24, borderRadius: BorderRadius.circular(20)), child: Text(e, style: TextStyle(color: _mode==e?Colors.black:Colors.white, fontWeight: FontWeight.bold))))).toList())),
-        Positioned(bottom:30,left:0,right:0,child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children:[GestureDetector(onTap: _pickGallery, child: const Column(children:[Icon(Icons.photo_library, color: Colors.white, size:32), SizedBox(height:4), Text("Gallery", style: TextStyle(color: Colors.white, fontSize:12))])), GestureDetector(onTap: _mode=="Story"? _takePhoto : _toggleRec, onLongPress: _mode!="Story"? _toggleRec : null, child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: _isRec?Colors.red:Colors.white, width:4)), child: Container(padding: const EdgeInsets.all(30), decoration: BoxDecoration(color: _isRec?Colors.red:Colors.white, shape: BoxShape.circle), child: Icon(_mode=="Story"?Icons.camera_alt:Icons.videocam, size:32, color: Colors.black)))), GestureDetector(onTap: _showBeautyFilters, child: Column(children:[Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.white24, shape: BoxShape.circle, border: Border.all(color: Colors.pink, width:1)), child: const Icon(Icons.face_retouching_natural, color: Colors.white, size:28)), const SizedBox(height:4), Text(_filters[_selectedFilter]['name'], style: const TextStyle(color: Colors.white, fontSize:12))]))])),
-        if(_isRec) Positioned(top: 80, left: 0, right: 0, child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal:12, vertical:6), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(20)), child: Text(_fmt(_sec), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))))
-      ]),
+      appBar: AppBar(title: Text(_isLongVideo? "Long 90m ${_song!="No Song"?"+ $_song":""}" : "Upload ${_song!="No Song"?"- $_song":""}"), backgroundColor: Colors.black, foregroundColor: Colors.white),
+      body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(children:[
+        if(_song!="No Song") Container(width:double.infinity, padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.pink.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.pink)), child: Row(children:[const Icon(Icons.music_note, color: Colors.pink, size:16), const SizedBox(width:6), Expanded(child: Text("$_song selected", style: const TextStyle(color: Colors.pink, fontWeight: FontWeight.bold))), IconButton(icon: const Icon(Icons.close, color: Colors.pink, size: 16), onPressed: ()=> setState(()=> _song="No Song"))])),
+        const SizedBox(height:12),
+        TextField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Title *", labelStyle: const TextStyle(color: Colors.white54), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)))),
+        const SizedBox(height:12),
+        SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.music_note, color: Colors.pink), label: Text(_song=="No Song"? "1000 Songs Me Se Add Karo" : "Song: $_song - Change Karo", style: const TextStyle(color: Colors.pink)), onPressed: _selectSong)),
+        const SizedBox(height:12),
+        Container(height: 220, width: double.infinity, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)), child: _file==null? const Icon(Icons.videocam, size:60, color: Colors.green) : _isVideo? (_previewCtrl?.value.isInitialized==true? Stack(alignment: Alignment.center, children:[ClipRRect(borderRadius: BorderRadius.circular(12), child: AspectRatio(aspectRatio: _previewCtrl!.value.aspectRatio, child: VideoPlayer(_previewCtrl!))), GestureDetector(onTap: (){ setState((){ _previewCtrl!.value.isPlaying? _previewCtrl!.pause() : _previewCtrl!.play(); }); }, child: Icon(_previewCtrl!.value.isPlaying? Icons.pause_circle : Icons.play_circle, size:50, color: Colors.white70))]) : Center(child: Text(_file!.path.split('/').last, style: const TextStyle(color: Colors.white70)))) : ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_file!, fit: BoxFit.cover, width: double.infinity))),
+        const SizedBox(height:12),
+        if(_showTrimmer) Column(children: [const Text("30 Sec Trimmer - drag karke kaato", style: TextStyle(color: Colors.white, fontSize: 12)), const SizedBox(height: 8), TrimViewer(trimmer: _trimmer, viewerHeight: 50, viewerWidth: MediaQuery.of(context).size.width - 32, maxVideoLength: const Duration(seconds: 30), onChangeStart: (v)=> _startValue=v, onChangeEnd: (v)=> _endValue=v, onChangePlaybackState: (playing){ if(playing) _previewCtrl?.play(); else _previewCtrl?.pause(); }), Text("${_startValue.toStringAsFixed(1)}s - ${_endValue.toStringAsFixed(1)}s (Max 30s)", style: const TextStyle(color: Colors.white70, fontSize: 11)), const SizedBox(height: 12)]),
+        Row(children:[Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickImage, child: const Text("Photo"))), const SizedBox(width:6), Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickVideo, child: const Text("Reel 15m"))), const SizedBox(width:6), Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickLongVideo, style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text("Long 90m")))]),
+        const SizedBox(height:20),
+        if(_isUploading) Column(children:[LinearProgressIndicator(value: _progress/100, minHeight: 8, color: _isLongVideo?Colors.red:Colors.green, backgroundColor: Colors.white24), const SizedBox(height:10), Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai... $_song", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
+        const SizedBox(height:10),
+        SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _isUploading?null:_upload, style: ElevatedButton.styleFrom(backgroundColor: _isLongVideo?Colors.red:Colors.white, foregroundColor: _isLongVideo?Colors.white:Colors.black, padding: const EdgeInsets.symmetric(vertical:14)), child: Text(_isUploading? "${_progress.toStringAsFixed(0)}%..." : "Upload Karo"))),
+      ])),
     );
   }
 }
