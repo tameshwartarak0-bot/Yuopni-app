@@ -104,6 +104,7 @@ class _CameraPageState extends State<CameraPage> {
 
   Future<void> _preview() async {
     if(_file==null) return;
+    if(_file!.path.endsWith(".jpg") || _file!.path.endsWith(".jpeg") || _file!.path.endsWith(".png")) return;
     await _vCtrl?.dispose();
     _vCtrl = VideoPlayerController.file(File(_file!.path));
     await _vCtrl!.initialize();
@@ -195,16 +196,39 @@ class _CameraPageState extends State<CameraPage> {
     showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1A1A1A), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (_) => Container(padding: const EdgeInsets.all(16), height: 140, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Center(child: Container(width:40,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(10)))), const SizedBox(height:12), const Text("Beauty Filters", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height:12), Expanded(child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: _filters.length, itemBuilder: (_, i){ bool sel = _selectedFilter == i; return GestureDetector(onTap: (){ setState(()=>_selectedFilter=i); Navigator.pop(context); }, child: Container(margin: const EdgeInsets.only(right:10), child: Column(children:[Container(width:60,height:60, decoration: BoxDecoration(color: sel? Colors.pink : Colors.white24, shape: BoxShape.circle, border: Border.all(color: sel? Colors.pinkAccent : Colors.transparent, width:2)), child: Icon(Icons.face_retouching_natural, color: sel? Colors.white : Colors.white70)), const SizedBox(height:5), Text(_filters[i]['name'], style: TextStyle(color: sel? Colors.pink : Colors.white70, fontSize:12))]))) ;}))])));
   }
 
+  // === YAHI MAIN FIX HAI ===
+  Future<void> _goToUpload() async {
+    _audio.stop();
+    if(_file==null) return;
+    try{
+      File original = File(_file!.path);
+      File fileToSend = original;
+      // Agar video hai to.mp4 extension pakka karo
+      if(_mode!= "Story"){
+        final newPath = "${Directory.systemTemp.path}/${DateTime.now().millisecondsSinceEpoch}.mp4";
+        fileToSend = await original.copy(newPath);
+      }
+      if(mounted){
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_)=> UploadPage(prefile: fileToSend, isVideo: _mode!="Story", isLong: _mode=="Video", songName: _song, songUrl: _currentSongUrl?? "")));
+      }
+    }catch(e){
+      if(mounted){
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_)=> UploadPage(prefile: File(_file!.path), isVideo: _mode!="Story", isLong: _mode=="Video", songName: _song, songUrl: _currentSongUrl?? "")));
+      }
+    }
+  }
+
   @override void dispose(){ _cam?.dispose(); _vCtrl?.dispose(); _timer?.cancel(); _audio.dispose(); super.dispose(); }
 
   @override Widget build(BuildContext context){
     if(_file!=null){
+      bool isVideoFile =!_file!.path.endsWith(".jpg") &&!_file!.path.endsWith(".jpeg") &&!_file!.path.endsWith(".png");
       return Scaffold(
         backgroundColor: Colors.black,
         appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text("${_vCtrl!=null?_fmt(_vCtrl!.value.position.inSeconds):_fmt(_sec)} - $_song", style: const TextStyle(fontSize: 14))),
         body: Column(children:[
-          Expanded(child: _file!.path.endsWith(".mp4")? (_vCtrl?.value.isInitialized==true? VideoPlayer(_vCtrl!) : const Center(child: CircularProgressIndicator())) : Image.file(File(_file!.path), fit: BoxFit.contain)),
-          Padding(padding: const EdgeInsets.all(16), child: Row(children:[Expanded(child: OutlinedButton(onPressed: (){ _vCtrl?.dispose(); _audio.stop(); setState(()=>_file=null); }, child: const Text("Retake", style: TextStyle(color: Colors.white)))), const SizedBox(width:12), Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green), onPressed: (){ _audio.stop(); Navigator.pushReplacement(context, MaterialPageRoute(builder: (_)=> UploadPage(prefile: File(_file!.path), isVideo: true, isLong: _mode=="Video", songName: _song, songUrl: _currentSongUrl?? ""))); }, child: const Text("Next")))]))
+          Expanded(child: isVideoFile? (_vCtrl?.value.isInitialized==true? VideoPlayer(_vCtrl!) : const Center(child: CircularProgressIndicator())) : Image.file(File(_file!.path), fit: BoxFit.contain)),
+          Padding(padding: const EdgeInsets.all(16), child: Row(children:[Expanded(child: OutlinedButton(onPressed: (){ _vCtrl?.dispose(); _audio.stop(); setState(()=>_file=null); }, child: const Text("Retake", style: TextStyle(color: Colors.white)))), const SizedBox(width:12), Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.green), onPressed: _goToUpload, child: const Text("Next")))]))
         ]),
       );
     }
