@@ -15,18 +15,54 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   bool _loading = false;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-
-  // FIX 1: serverClientId hata diya, khali GoogleSignIn()
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  @override
+  void initState() {
+    super.initState();
+    _checkIfAlreadyLoggedIn();
+  }
+
+  // FIX: Recent se clear karne ke baad yahi auto-login karayega
+  Future<void> _checkIfAlreadyLoggedIn() async {
+    // Agar Firebase me already user hai toh seedha MainScreen
+    if (_auth.currentUser!= null) {
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => MainScreen()),
+          (r) => false,
+        );
+      }
+      return;
+    }
+    // Google ka session silently restore karo
+    try {
+      final GoogleSignInAccount? silentUser = await _googleSignIn.signInSilently();
+      if (silentUser!= null) {
+        final googleAuth = await silentUser.authentication;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        await _auth.signInWithCredential(credential);
+        if (mounted && _auth.currentUser!= null) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => MainScreen()),
+            (r) => false,
+          );
+        }
+      }
+    } catch (_) {}
+  }
 
   Future<void> _loginWithGmail() async {
     setState(() => _loading = true);
     try {
-      // FIX 2: Yaha jo signOut() tha usko hamesha ke liye hata diya - yahi logout kara raha tha
-
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser == null) {
-        if(mounted) setState(() => _loading = false);
+        if (mounted) setState(() => _loading = false);
         return;
       }
       final googleAuth = await googleUser.authentication;
@@ -70,7 +106,7 @@ class _LoginPageState extends State<LoginPage> {
             Navigator.pushAndRemoveUntil(
               context,
               MaterialPageRoute(builder: (_) => MainScreen()),
-              (r) => false
+              (r) => false,
             );
           }
         }
@@ -78,7 +114,7 @@ class _LoginPageState extends State<LoginPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Login Error: $e"), backgroundColor: Colors.red)
+          SnackBar(content: Text("Login Error: $e"), backgroundColor: Colors.red),
         );
       }
     }
@@ -131,7 +167,7 @@ class _LoginPageState extends State<LoginPage> {
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.black,
                     padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25))
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
                   ),
                   onPressed: () async {
                     String newUsername = usernameCtrl.text.trim();
@@ -142,7 +178,7 @@ class _LoginPageState extends State<LoginPage> {
                     String usernameLower = newUsername.toLowerCase().replaceAll(" ", "_");
                     var check = await FirebaseFirestore.instance.collection('users').where('username', isEqualTo: usernameLower).get();
                     if (check.docs.isNotEmpty) {
-                      if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ye ID pehle se hai"), backgroundColor: Colors.red));
+                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ye ID pehle se hai"), backgroundColor: Colors.red));
                       return;
                     }
                     await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
@@ -189,12 +225,38 @@ class _LoginPageState extends State<LoginPage> {
               const SizedBox(height: 20),
               const Text("Yuopni", style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(height: 50),
-              _loading? const CircularProgressIndicator(color: Colors.pink)
-              : Column(children: [
-                  SizedBox(width: double.infinity, child: ElevatedButton.icon(icon: Image.network("https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg", height: 20), label: const Text("Continue with Gmail", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)), style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 15), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))), onPressed: _loginWithGmail)),
-                  const SizedBox(height: 15),
-                  SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.phone_android, color: Colors.white), label: const Text("Continue with Mobile Number", style: TextStyle(color: Colors.white)), style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 15), side: const BorderSide(color: Colors.white), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PhoneLoginPage())))),
-                ]),
+              _loading
+                 ? const CircularProgressIndicator(color: Colors.pink)
+                  : Column(children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          icon: Image.network("https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg", height: 20),
+                          label: const Text("Continue with Gmail", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          ),
+                          onPressed: _loginWithGmail,
+                        ),
+                      ),
+                      const SizedBox(height: 15),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.phone_android, color: Colors.white),
+                          label: const Text("Continue with Mobile Number", style: TextStyle(color: Colors.white)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            side: const BorderSide(color: Colors.white),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          ),
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PhoneLoginPage())),
+                        ),
+                      ),
+                    ]),
             ],
           ),
         ),
