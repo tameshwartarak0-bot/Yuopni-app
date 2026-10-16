@@ -42,12 +42,15 @@ jobs:
 
       - run: flutter pub get
       - run: flutter build apk --release --split-per-abi
-      # --split-per-abi se APK 60MB se 20MB ho jayega = 3x fast download
 
       - name: Verify APK Signature
         run: |
-          $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose build/app/outputs/flutter-apk/app-release.apk || $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
           ls -lh build/app/outputs/flutter-apk/
+          # FIX: split-per-abi me app-release.apk nahi banta, isliye jo bane hain unko hi verify karo
+          for apk in build/app/outputs/flutter-apk/*-release.apk; do
+            echo "Verifying $apk"
+            $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "$apk"
+          done
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
