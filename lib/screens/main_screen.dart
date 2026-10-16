@@ -10,7 +10,6 @@ import '../widgets/create_sheet.dart';
 import 'search_page.dart';
 import 'notification_page.dart';
 
-// GLOBAL - Reel ko pause karne ke liye
 ValueNotifier<bool> pauseReelsNotifier = ValueNotifier(false);
 
 class MainScreen extends StatefulWidget {
@@ -22,18 +21,15 @@ class _MainScreenState extends State<MainScreen> {
   int _index = 0;
   DateTime? _lastBackPress;
 
-  bool _checkLogin() {
-    if (fb_auth.FirebaseAuth.instance.currentUser == null) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginPage()));
-      return false;
-    }
-    return true;
-  }
+  bool get _isLoggedIn => fb_auth.FirebaseAuth.instance.currentUser != null;
 
   void _onTap(int i) {
-    // 1 = Create button (beech wala)
+    // 1 = Create
     if (i == 1) {
-      if (!_checkLogin()) return;
+      if (!_isLoggedIn) {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginPage()));
+        return;
+      }
       pauseReelsNotifier.value = true;
       showModalBottomSheet(
         context: context,
@@ -45,14 +41,13 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
 
-    // 3 = Message (i=3) -> login jaruri
-    if (i == 3) {
-      if (!_checkLogin()) return;
+    // 3 = Message
+    if (i == 3 && !_isLoggedIn) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginPage()));
+      return;
     }
 
-    // 4 = Profile (i=4) -> login check nahi karna, _buildProfileTab khud handle karega
-    // Isse double login khulne ka bug khatam
-
+    // 4 = Profile me login check nahi - _buildProfileTab khud handle karega
     pauseReelsNotifier.value = (i != 2);
     setState(() => _index = i > 1 ? i - 1 : i);
   }
@@ -81,13 +76,16 @@ class _MainScreenState extends State<MainScreen> {
     return StreamBuilder<fb_auth.User?>(
       stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
+        // FIX: Waiting me LoginPage mat dikhao, warna recent clear par logout lagega
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: Colors.white));
+          return const Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(child: CircularProgressIndicator(color: Colors.white)),
+          );
         }
         if (snapshot.hasData && snapshot.data != null) {
           return ProfilePage();
         }
-        // Guest hai to LoginPage dikhao (push nahi, direct yahi dikhega)
         return const LoginPage();
       },
     );
