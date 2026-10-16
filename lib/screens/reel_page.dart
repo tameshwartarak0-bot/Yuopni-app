@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:just_audio/just_audio.dart'; // FIX: Song ke liye
 import 'package:share_plus/share_plus.dart';
 import 'main_screen.dart';
 import 'login_page.dart';
@@ -99,45 +100,78 @@ class ReelItem extends StatefulWidget {
 
 class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin {
   @override bool get wantKeepAlive => true;
-  VideoPlayerController? _videoController; ChewieController? _chewieController;
+  VideoPlayerController? _videoController;
+  ChewieController? _chewieController;
+  final AudioPlayer _songPlayer = AudioPlayer(); // FIX: Song player
   bool _isInit = false; bool _isError = false; bool _liked = false; int _likeCount = 0;
 
   @override
   void initState() {
     super.initState();
     String url = (widget.data['mediaUrl']?? widget.data['videoUrl']?? '').toString().trim();
+    String songUrl = (widget.data['songUrl']?? '').toString().trim();
     _likeCount = (widget.data['likes'] as List?)?.length?? 0;
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid!= null) _liked = (widget.data['likes'] as List?)?.contains(uid)?? false;
+
     if (url.isNotEmpty && url.contains('http')) {
       _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
       _videoController!.initialize().then((_) {
         if (!mounted) return;
         _chewieController = ChewieController(videoPlayerController: _videoController!, autoPlay: widget.isActive, looping: true, showControls: false, aspectRatio: _videoController!.value.aspectRatio);
         setState(() => _isInit = true);
-        if (widget.isActive &&!pauseReelsNotifier.value) _videoController!.play();
+        if (widget.isActive &&!pauseReelsNotifier.value) {
+          _videoController!.play();
+          _playSongIfNeeded(songUrl); // FIX: Video ke saath song bhi
+        }
       }).catchError((e) { if (mounted) setState(() => _isError = true); });
     } else _isError = true;
     pauseReelsNotifier.addListener(_handleGlobalPause);
   }
 
+  Future<void> _playSongIfNeeded(String songUrl) async {
+    if(songUrl.isEmpty) return;
+    try{
+      await _songPlayer.setUrl(songUrl);
+      await _songPlayer.setLoopMode(LoopMode.one);
+      await _songPlayer.setVolume(1.0);
+      await _songPlayer.play();
+    }catch(e){ print("Song error $e"); }
+  }
+
   void _handleGlobalPause() {
     if (!mounted || _videoController == null ||!_isInit) return;
-    if (pauseReelsNotifier.value) _videoController!.pause(); else if (widget.isActive) _videoController!.play();
+    if (pauseReelsNotifier.value) {
+      _videoController!.pause();
+      _songPlayer.pause(); // FIX: Global pause pe song bhi pause
+    } else if (widget.isActive) {
+      _videoController!.play();
+      _songPlayer.play();
+    }
   }
 
   @override
   void didUpdateWidget(covariant ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.isActive!= widget.isActive) {
-      if (widget.isActive &&!pauseReelsNotifier.value) _videoController?.play(); else _videoController?.pause();
+      String songUrl = (widget.data['songUrl']?? '').toString().trim();
+      if (widget.isActive &&!pauseReelsNotifier.value) {
+        _videoController?.play();
+        if(songUrl.isNotEmpty) _songPlayer.play();
+      } else {
+        _videoController?.pause();
+        _songPlayer.pause();
+      }
     }
   }
 
   @override
   void dispose() {
     pauseReelsNotifier.removeListener(_handleGlobalPause);
-    _videoController?.dispose(); _chewieController?.dispose(); super.dispose();
+    _videoController?.dispose();
+    _chewieController?.dispose();
+    _songPlayer.dispose(); // FIX: dispose
+    super.dispose();
   }
 
   bool _requireLogin() {
@@ -154,7 +188,6 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     if (_liked) ref.update({'likes': FieldValue.arrayUnion([uid])}); else ref.update({'likes': FieldValue.arrayRemove([uid])});
   }
 
-  // --- FIX 2: Popup khulte hi song band hoga ---
   void _pauseForPopup() { pauseReelsNotifier.value = true; }
   void _resumeAfterPopup() { pauseReelsNotifier.value = false; }
 
@@ -194,8 +227,6 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-
-    // --- FIX 1: ID naam nahi dikh raha tha ---
     String username = (widget.data['username']?? widget.data['userName']?? widget.data['displayName']?? widget.data['name']?? 'Yuopni User').toString();
     String caption = (widget.data['caption']?? widget.data['title']?? widget.data['description']?? '').toString();
     String songName = (widget.data['songName']?? widget.data['music']?? widget.data['audioName']?? 'Original audio - ${username}').toString();
@@ -204,17 +235,14 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     return Container(color: Colors.black, child: Stack(fit: StackFit.expand, children: [
       _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white, size: 50))
       : _isInit && _videoController!= null && _chewieController!= null
-    ? GestureDetector(onTap: (){ if(_videoController!.value.isPlaying) _videoController!.pause(); else _videoController!.play(); }, child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: Chewie(controller: _chewieController!))))
+   ? GestureDetector(onTap: (){ if(_videoController!.value.isPlaying) { _videoController!.pause(); _songPlayer.pause(); } else { _videoController!.play(); _songPlayer.play(); } }, child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: Chewie(controller: _chewieController!))))
       : const Center(child: CircularProgressIndicator(color: Colors.white)),
 
-      // Bottom Left - FIX: ID + Caption + Song
       Positioned(bottom: 35, left: 15, right: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           CircleAvatar(radius: 16, backgroundColor: Colors.pink, backgroundImage: userPhoto.isNotEmpty? NetworkImage(userPhoto): null, child: userPhoto.isEmpty? Text(username[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)): null),
           const SizedBox(width: 8),
           Text("@$username", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-          const SizedBox(width: 8),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(border: Border.all(color: Colors.white), borderRadius: BorderRadius.circular(4)), child: const Text("Follow", style: TextStyle(color: Colors.white, fontSize: 10))),
         ]),
         const SizedBox(height: 8),
         if(caption.isNotEmpty) Text(caption, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 13)),
