@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,17 +9,18 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_trimmer/video_trimmer.dart';
 import 'package:just_audio/just_audio.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../global.dart';
-import '../data/songs_data.dart'; // list ab yahan se aayegi
+import '../data/songs_data.dart';
 
 class UploadPage extends StatefulWidget {
   final File? prefile;
   final bool? isVideo;
   final bool? isLong;
   final String? songName;
-  const UploadPage({super.key, this.prefile, this.isVideo, this.isLong, this.songName});
+  final String? songUrl; // FIX: Ye add kiya
+  const UploadPage({super.key, this.prefile, this.isVideo, this.isLong, this.songName, this.songUrl});
   @override State<UploadPage> createState() => _UploadPageState();
 }
 
@@ -32,11 +34,13 @@ class _UploadPageState extends State<UploadPage> {
   double _progress = 0;
   VideoPlayerController? _previewCtrl;
   String _song = "No Song";
+  String _songUrl = ""; // FIX: URL store
   final Trimmer _trimmer = Trimmer();
   double _startValue = 0.0;
   double _endValue = 0.0;
   bool _showTrimmer = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
+  Map<String,String> _cacheUrls = {};
 
   static const String cloudName = "b7qkm3lk";
   static const String uploadPreset = "yuopni_upload";
@@ -52,6 +56,7 @@ class _UploadPageState extends State<UploadPage> {
       _isVideo = widget.isVideo?? false;
       _isLongVideo = widget.isLong?? false;
       _song = widget.songName?? "No Song";
+      _songUrl = widget.songUrl?? "";
       if(_isVideo && _file!=null) _loadVideo(_file!);
       _descCtrl.text = _song!= "No Song"? "Song: $_song" : "";
     }
@@ -65,6 +70,22 @@ class _UploadPageState extends State<UploadPage> {
     await androidPlugin?.createNotificationChannel(const AndroidNotificationChannel('yuopni_upload','Yuopni Uploads', importance: Importance.low, playSound: false));
   }
 
+  Future<String> _getRealUrl(String name) async {
+    if(_cacheUrls.containsKey(name)) return _cacheUrls[name]!;
+    try{
+      final res = await http.get(Uri.parse("https://itunes.apple.com/search?term=${Uri.encodeComponent(name)}&media=music&limit=1&country=in"));
+      if(res.statusCode==200){
+        final data = jsonDecode(res.body);
+        if(data['results']!=null && data['results'].length>0 && data['results'][0]['previewUrl']!=null){
+          String url = data['results'][0]['previewUrl'];
+          _cacheUrls[name]=url;
+          return url;
+        }
+      }
+    }catch(_){}
+    return "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+  }
+
   Future<void> _updateNotif(double p) async {
     if (p < 0) p = 0; if (p > 100) p = 100;
     globalUploadProgress.value = p;
@@ -74,25 +95,23 @@ class _UploadPageState extends State<UploadPage> {
 
   String _fmt(int sec){ final m = sec ~/ 60; final s = sec % 60; return "$m:${s.toString().padLeft(2,'0')}"; }
 
+  // FIX: Video load sahi kiya
   Future<void> _loadVideo(File file) async {
     await _trimmer.loadVideo(videoFile: file);
-    _previewCtrl?.dispose();
-    _previewCtrl = VideoPlayerController.file(file)..initialize().then((_) {
-      if(mounted){
-        if(!_isLongVideo){
-          setState((){
-            _showTrimmer = true;
-            _endValue = _previewCtrl!.value.duration.inSeconds > 30? 30 : _previewCtrl!.value.duration.inSeconds.toDouble();
-          });
-        }
-        _previewCtrl!.setLooping(true);
-        _previewCtrl!.play();
-        setState((){});
-      }
-    });
+    await _previewCtrl?.dispose();
+    _previewCtrl = VideoPlayerController.file(file);
+    await _previewCtrl!.initialize();
+    await _previewCtrl!.setLooping(true);
+    await _previewCtrl!.play();
+    if(mounted){
+      setState((){
+        _showTrimmer =!_isLongVideo;
+        _endValue = _previewCtrl!.value.duration.inSeconds > 30? 30 : _previewCtrl!.value.duration.inSeconds.toDouble();
+      });
+    }
   }
 
-  Future<void> _pickImage() async { final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70); if(x!=null){ _previewCtrl?.dispose(); _previewCtrl=null; setState((){ _file=File(x.path); _isVideo=false; _isLongVideo=false; _showTrimmer=false; }); } }
+  Future<void> _pickImage() async { final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70); if(x!=null){ await _previewCtrl?.dispose(); _previewCtrl=null; setState((){ _file=File(x.path); _isVideo=false; _isLongVideo=false; _showTrimmer=false; }); } }
   Future<void> _pickVideo() async { final x = await ImagePicker().pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 15)); if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=false; }); await _loadVideo(f); } }
   Future<void> _pickLongVideo() async { final x = await ImagePicker().pickVideo(source: ImageSource.gallery); if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=true; _showTrimmer=false; }); await _loadVideo(f); } }
 
@@ -109,16 +128,30 @@ class _UploadPageState extends State<UploadPage> {
             const SizedBox(height: 12),
             TextField(style: const TextStyle(color: Colors.white), decoration: InputDecoration(prefixIcon: const Icon(Icons.search, color: Colors.white54), hintText: "1000 songs me search...", hintStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: Colors.white10, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), onChanged: (v){ setM(()=> search=v); }),
             const SizedBox(height: 10),
-            Text("${filtered.length} songs", style: const TextStyle(color: Colors.grey, fontSize: 11)),
             Expanded(child: ListView.builder(itemCount: filtered.length, itemBuilder: (ctx,i){
               var name = filtered[i];
               return ListTile(
                 title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 14)),
                 leading: Icon(name==_song? Icons.radio_button_checked : Icons.radio_button_off, color: Colors.pink),
                 trailing: IconButton(icon: const Icon(Icons.play_circle, color: Colors.white70), onPressed: () async {
-                  try{ await _audioPlayer.setUrl("https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"); _audioPlayer.play(); }catch(e){}
+                  try{
+                    String url = await _getRealUrl(name);
+                    await _audioPlayer.stop();
+                    await _audioPlayer.setUrl(url);
+                    await _audioPlayer.play();
+                  }catch(e){}
                 }),
-                onTap: (){ setState(()=> _song = name); Navigator.pop(context); _audioPlayer.stop(); },
+                onTap: () async {
+                  String url = await _getRealUrl(name);
+                  setState((){
+                    _song = name;
+                    _songUrl = url;
+                  });
+                  Navigator.pop(context);
+                  await _audioPlayer.stop();
+                  await _audioPlayer.setUrl(url);
+                  await _audioPlayer.play();
+                },
               );
             })),
           ]),
@@ -164,7 +197,9 @@ class _UploadPageState extends State<UploadPage> {
       await docRef.set({
         'uid': FirebaseAuth.instance.currentUser!.uid,
         'title': title, 'title_search': title.toLowerCase(), 'title_lower': title.toLowerCase(),
-        'description': _descCtrl.text.trim(), 'songName': _song,
+        'description': _descCtrl.text.trim(),
+        'songName': _song,
+        'songUrl': _songUrl, // FIX: Ab songUrl bhi save hoga
         'mediaUrl': url, 'videoUrl': url, 'imageUrl': url, 'thumbnail': url,
         'isVideo': _isVideo, 'isLongVideo': _isLongVideo,
         'duration': _endValue>0? (_endValue - _startValue).toInt() : _previewCtrl?.value.duration.inSeconds?? 0,
@@ -191,7 +226,7 @@ class _UploadPageState extends State<UploadPage> {
       backgroundColor: Colors.black,
       appBar: AppBar(title: Text(_isLongVideo? "Long 90m ${_song!="No Song"?"+ $_song":""}" : "Upload ${_song!="No Song"?"- $_song":""}"), backgroundColor: Colors.black, foregroundColor: Colors.white),
       body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(children:[
-        if(_song!="No Song") Container(width:double.infinity, padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.pink.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.pink)), child: Row(children:[const Icon(Icons.music_note, color: Colors.pink, size:16), const SizedBox(width:6), Expanded(child: Text("$_song selected", style: const TextStyle(color: Colors.pink, fontWeight: FontWeight.bold))), IconButton(icon: const Icon(Icons.close, color: Colors.pink, size: 16), onPressed: ()=> setState(()=> _song="No Song"))])),
+        if(_song!="No Song") Container(width:double.infinity, padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.pink.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.pink)), child: Row(children:[const Icon(Icons.music_note, color: Colors.pink, size:16), const SizedBox(width:6), Expanded(child: Text("$_song selected", style: const TextStyle(color: Colors.pink, fontWeight: FontWeight.bold))), IconButton(icon: const Icon(Icons.close, color: Colors.pink, size: 16), onPressed: (){ _audioPlayer.stop(); setState(()=> { _song="No Song", _songUrl="" }); })])),
         const SizedBox(height:12),
         TextField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Title *", labelStyle: const TextStyle(color: Colors.white54), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)))),
         const SizedBox(height:12),
