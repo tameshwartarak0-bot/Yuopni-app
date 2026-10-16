@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../screens/camera_page.dart' hide UploadPage;
+import '../screens/camera_page.dart' as cam;
 import '../screens/upload_page.dart';
 
 class CreateSheet extends StatelessWidget {
@@ -8,9 +8,9 @@ class CreateSheet extends StatelessWidget {
 
   static void show(BuildContext context) {
     showModalBottomSheet(
-      context: context, 
-      backgroundColor: const Color(0xFF1A1A1A), 
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), 
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => const CreateSheet()
     );
   }
@@ -20,34 +20,26 @@ class CreateSheet extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       height: 300,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1A1A1A), 
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20))
-      ),
       child: Column(children:[
         Container(width:40,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(10))),
         const SizedBox(height:20),
         ListTile(
           leading: const CircleAvatar(backgroundColor: Colors.green, child: Icon(Icons.videocam, color: Colors.white)),
-          title: const Text("Create", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+          title: const Text("Create", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           onTap: () async {
             Navigator.pop(context);
-            final result = await Navigator.push(context, MaterialPageRoute(builder: (_)=> CameraPage()));
+            final result = await Navigator.push(context, MaterialPageRoute(builder: (_)=> cam.CameraPage()));
             if(result!=null && result['file']!=null){
-              File file=result['file']; 
-              bool isVideo=result['isVideo']??false; 
-              bool isLong=result['isLong']??false; 
-              String song=result['song']??"No Song";
+              File file=result['file'];
               if(context.mounted) {
-                Navigator.push(context, MaterialPageRoute(builder: (_)=> UploadPage(prefile: file, isVideo: isVideo, isLong: isLong, songName: song)));
+                Navigator.push(context, MaterialPageRoute(builder: (_)=> UploadPage(prefile: file, isVideo: result['isVideo'], isLong: result['isLong'], songName: result['song'])));
               }
             }
           }
         ),
-        const Divider(color: Colors.white24),
         ListTile(
           leading: const CircleAvatar(backgroundColor: Colors.red, child: Icon(Icons.upload, color: Colors.white)),
-          title: const Text("Upload", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+          title: const Text("Upload", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           onTap: (){
             Navigator.pop(context);
             Navigator.push(context, MaterialPageRoute(builder: (_)=> const UploadPage()));
