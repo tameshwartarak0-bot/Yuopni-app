@@ -36,7 +36,12 @@ class _MainScreenState extends State<MainScreen> {
         backgroundColor: Colors.black,
         builder: (_) => CreateSheet()
       ).whenComplete(() {
-        pauseReelsNotifier.value = false;
+        // FIX: Create se Camera/Upload khule toh gaana band hi rahe
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (ModalRoute.of(context)?.isCurrent == true) {
+            pauseReelsNotifier.value = false;
+          }
+        });
       });
       return;
     }
@@ -71,32 +76,25 @@ class _MainScreenState extends State<MainScreen> {
     return true;
   }
 
-  // FINAL FIX - Recent clear par LoginPage flash khatam
   Widget _buildProfileTab() {
     return StreamBuilder<fb_auth.User?>(
       stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // Agar Firebase check kar raha hai
         if (snapshot.connectionState == ConnectionState.waiting) {
-          // Lekin phone me user pehle se hai toh seedha Profile dikhao
           if (fb_auth.FirebaseAuth.instance.currentUser != null) {
-            return const ProfilePage();
+            return ProfilePage();
           }
           return const Scaffold(
             backgroundColor: Colors.black,
             body: Center(child: CircularProgressIndicator(color: Colors.white)),
           );
         }
-
         if (snapshot.hasData && snapshot.data != null) {
-          return const ProfilePage();
+          return ProfilePage();
         }
-
-        // Flash rokne ke liye double check
         if (fb_auth.FirebaseAuth.instance.currentUser != null) {
-          return const ProfilePage();
+          return ProfilePage();
         }
-
         return const LoginPage();
       },
     );
@@ -122,7 +120,6 @@ class _MainScreenState extends State<MainScreen> {
             IconButton(icon: const Icon(Icons.notifications), onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationPage()))),
           ],
         ),
-        // FINAL FIX 2 - IndexedStack se page reload nahi hoga
         body: IndexedStack(
           index: _index,
           children: pages,
