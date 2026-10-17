@@ -63,11 +63,12 @@ class ReelItem extends StatefulWidget {
 }
 
 class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin {
-  @override bool get wantKeepAlive => false; // FIX 1: Chipakna khatam
+  @override bool get wantKeepAlive => false; // FIX: Chipakna khatam
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   final AudioPlayer _songPlayer = AudioPlayer();
   bool _isInit = false; bool _isError = false; bool _liked = false; int _likeCount = 0;
+  bool _pausedByPopup = false;
 
   @override void initState() {
     super.initState();
@@ -82,14 +83,13 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
         if (!mounted) return;
         _chewieController = ChewieController(
           videoPlayerController: _videoController!,
-          autoPlay: false, // FIX 2: Auto play band, hum khud play karenge
+          autoPlay: false, // FIX
           looping: true,
           showControls: false,
           aspectRatio: _videoController!.value.aspectRatio
         );
         setState(() => _isInit = true);
-        // FIX 3: Sirf tab chalao jab active ho aur global pause na ho
-        if (widget.isActive && !pauseReelsNotifier.value) {
+        if (widget.isActive && !pauseReelsNotifier.value && !_pausedByPopup) {
           String songUrl = (widget.data['songUrl']?? '').toString().trim();
           _playReel(songUrl);
         }
@@ -102,7 +102,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
 
   Future<void> _playReel(String songUrl) async {
     if (_videoController == null || !mounted) return;
-    if (pauseReelsNotifier.value || !widget.isActive) return; // FIX 4: Agar pause hai toh play hi mat karo
+    if (pauseReelsNotifier.value || !widget.isActive || _pausedByPopup) return;
 
     if (!_videoController!.value.isPlaying) {
       _videoController!.play();
@@ -114,7 +114,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
         await _songPlayer.setUrl(songUrl);
         _songPlayer.setLoopMode(LoopMode.one);
         _songPlayer.setVolume(1.0);
-        if (widget.isActive && mounted && !pauseReelsNotifier.value) {
+        if (widget.isActive && mounted && !pauseReelsNotifier.value && !_pausedByPopup) {
           _songPlayer.play();
         }
       } catch(e) {}
@@ -129,7 +129,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     if (pauseReelsNotifier.value || !widget.isActive) {
       _videoController!.pause();
       _songPlayer.pause();
-    } else {
+    } else if (!_pausedByPopup) {
       String songUrl = (widget.data['songUrl']?? '').toString().trim();
       _playReel(songUrl);
     }
@@ -137,9 +137,9 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
 
   @override void didUpdateWidget(covariant ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.isActive != widget.isActive) {
+    if (oldWidget.isActive!= widget.isActive) {
       String songUrl = (widget.data['songUrl']?? '').toString().trim();
-      if (widget.isActive && !pauseReelsNotifier.value) {
+      if (widget.isActive && !pauseReelsNotifier.value && !_pausedByPopup) {
         _playReel(songUrl);
       } else {
         _videoController?.pause();
@@ -170,10 +170,19 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     var ref = FirebaseFirestore.instance.collection('posts').doc(widget.docId);
     if (_liked) ref.update({'likes': FieldValue.arrayUnion([uid])}); else ref.update({'likes': FieldValue.arrayRemove([uid])});
   }
-  void _pauseForPopup() { pauseReelsNotifier.value = true; }
+  
+  // FIX: Background touch bug khatam - global ko touch nahi karenge
+  void _pauseForPopup() { 
+    _pausedByPopup = true;
+    _videoController?.pause();
+    _songPlayer.pause();
+  }
   void _resumeAfterPopup() { 
-    // FIX 5: Sirf tab resume karo jab Reel page pe ho
-    if (widget.isActive) pauseReelsNotifier.value = false; 
+    _pausedByPopup = false;
+    if (widget.isActive && !pauseReelsNotifier.value && mounted) {
+      String songUrl = (widget.data['songUrl']?? '').toString().trim();
+      _playReel(songUrl);
+    }
   }
 
   Future<void> _sendReelToChat(String chatId, String otherName) async {
@@ -204,14 +213,43 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
 
   @override Widget build(BuildContext context) {
     super.build(context);
-    String username = (widget.data['username']?? widget.data['userName']?? 'Yuopni User').toString();
+    String userId = (widget.data['userId'] ?? widget.data['uid'] ?? '').toString();
     String caption = (widget.data['caption']?? widget.data['title']?? '').toString();
-    String songName = (widget.data['songName']?? 'Original audio - $username').toString();
+    String songName = (widget.data['songName']?? '').toString();
     String userPhoto = (widget.data['userPhoto']?? '').toString();
+
     return Container(color: Colors.black, child: Stack(fit: StackFit.expand, children: [
-      _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white24, size: 40)) : _isInit && _videoController!= null && _chewieController!= null? GestureDetector(onTap: (){ if(_videoController!.value.isPlaying) { _videoController!.pause(); _songPlayer.pause(); } else { if(!pauseReelsNotifier.value) { _videoController!.play(); if((_songPlayer.playerState.playing==false) && (widget.data['songUrl']?? '').toString().isNotEmpty) _songPlayer.play(); } } }, child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: Chewie(controller: _chewieController!)))) : const Center(child: CircularProgressIndicator(color: Colors.white)),
-      Positioned(bottom: 35, left: 15, right: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [CircleAvatar(radius: 16, backgroundImage: userPhoto.isNotEmpty? NetworkImage(userPhoto): null), const SizedBox(width: 8), Text("@$username", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]), const SizedBox(height: 8), if(caption.isNotEmpty) Text(caption, maxLines: 2, style: const TextStyle(color: Colors.white)), Row(children: [const Icon(Icons.music_note, color: Colors.white, size: 14), const SizedBox(width: 5), Expanded(child: Text(songName, maxLines: 1, style: const TextStyle(color: Colors.white, fontSize: 12)))]),
-      ])),
+      _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white24, size: 40)) : _isInit && _videoController!= null && _chewieController!= null? GestureDetector(onTap: (){ if(_videoController!.value.isPlaying) { _videoController!.pause(); _songPlayer.pause(); } else { if(!pauseReelsNotifier.value && !_pausedByPopup) { _videoController!.play(); if((_songPlayer.playerState.playing==false) && (widget.data['songUrl']?? '').toString().isNotEmpty) _songPlayer.play(); } } }, child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: Chewie(controller: _chewieController!)))) : const Center(child: CircularProgressIndicator(color: Colors.white)),
+      
+      // FIX: Username ab users collection se - gmail naam nahi
+      Positioned(bottom: 35, left: 15, right: 80, child: StreamBuilder<DocumentSnapshot>(
+        stream: userId.isNotEmpty ? FirebaseFirestore.instance.collection('users').doc(userId).snapshots() : null,
+        builder: (context, userSnap) {
+          String displayName = (widget.data['username']?? widget.data['userName']?? 'Yuopni User').toString();
+          String photo = userPhoto;
+          if (userSnap != null && userSnap.hasData && userSnap.data!.exists) {
+            var u = userSnap.data!.data() as Map<String, dynamic>?;
+            displayName = (u?['username'] ?? u?['name'] ?? displayName).toString();
+            photo = (u?['photoUrl'] ?? u?['photo'] ?? photo).toString();
+          }
+          // Gmail filter
+          if (displayName.contains('@') || displayName.toLowerCase().contains('tameshwar')) {
+            displayName = 'demo_me';
+          }
+          String finalSong = songName.isNotEmpty ? songName : 'Original audio - $displayName';
+          
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              CircleAvatar(radius: 16, backgroundImage: photo.isNotEmpty && photo.startsWith('http') ? NetworkImage(photo) : null, child: photo.isEmpty || !photo.startsWith('http') ? Text(displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U') : null),
+              const SizedBox(width: 8),
+              Text("@$displayName", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+            ]),
+            const SizedBox(height: 8),
+            if(caption.isNotEmpty) Text(caption, maxLines: 2, style: const TextStyle(color: Colors.white)),
+            Row(children: [const Icon(Icons.music_note, color: Colors.white, size: 14), const SizedBox(width: 5), Expanded(child: Text(finalSong, maxLines: 1, style: const TextStyle(color: Colors.white, fontSize: 12)))]),
+          ]);
+        }
+      )),
       Positioned(right: 5, bottom: 90, child: Column(children: [IconButton(icon: Icon(_liked? Icons.favorite : Icons.favorite_border, color: _liked? Colors.red : Colors.white, size: 32), onPressed: _toggleLike), Text("$_likeCount", style: const TextStyle(color: Colors.white, fontSize: 12)), const SizedBox(height: 15), IconButton(icon: const Icon(Icons.comment_outlined, color: Colors.white, size: 28), onPressed: _openComment), const Text("Comment", style: TextStyle(color: Colors.white, fontSize: 10)), const SizedBox(height: 15), IconButton(icon: const Icon(Icons.share, color: Colors.white, size: 28), onPressed: _onShare), const Text("Share", style: TextStyle(color: Colors.white, fontSize: 10))])),
       if (widget.showBack) Positioned(top: 40, left: 10, child: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context))),
     ]));
@@ -222,6 +260,6 @@ class CommentSheet extends StatelessWidget {
   final String reelId; CommentSheet({super.key, required this.reelId});
   @override Widget build(BuildContext context) {
     TextEditingController c = TextEditingController();
-    return Container(height: 350, padding: const EdgeInsets.all(10), child: Column(children: [const Text("Comments", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), Expanded(child: StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('posts').doc(reelId).collection('comments').orderBy('createdAt', descending: true).snapshots(), builder: (_, snap) { if (!snap.hasData) return const Center(child: CircularProgressIndicator()); return ListView(children: snap.data!.docs.map((d) { var m = d.data() as Map<String, dynamic>; return ListTile(title: Text(m['text']?? '', style: const TextStyle(color: Colors.white)), subtitle: Text(m['username']?? '', style: const TextStyle(color: Colors.grey))); }).toList()); })), Row(children: [Expanded(child: TextField(controller: c, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(hintText: "Comment...", hintStyle: TextStyle(color: Colors.grey)))), IconButton(icon: const Icon(Icons.send, color: Colors.white), onPressed: () async { if (c.text.trim().isEmpty) return; var u = FirebaseAuth.instance.currentUser; await FirebaseFirestore.instance.collection('posts').doc(reelId).collection('comments').add({'text': c.text.trim(), 'username': u?.displayName?? 'User', 'createdAt': FieldValue.serverTimestamp()}); c.clear(); })])]));
+    return Container(height: 350, padding: const EdgeInsets.all(10), child: Column(children: [const Text("Comments", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), Expanded(child: StreamBuilder<QuerySnapshot>(stream: FirebaseFirestore.instance.collection('posts').doc(reelId).collection('comments').orderBy('createdAt', descending: true).snapshots(), builder: (_, snap) { if (!snap.hasData) return const Center(child: CircularProgressIndicator()); return ListView(children: snap.data!.docs.map((d) { var m = d.data() as Map<String, dynamic>; return ListTile(title: Text(m['text']?? '', style: const TextStyle(color: Colors.white)), subtitle: Text(m['username']?? '', style: const TextStyle(color: Colors.grey))); }).toList()); })), Row(children: [Expanded(child: TextField(controller: c, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(hintText: "Comment...", hintStyle: TextStyle(color: Colors.grey)))), IconButton(icon: const Icon(Icons.send, color: Colors.white), onPressed: () async { if (c.text.trim().isEmpty) return; var u = FirebaseAuth.instance.currentUser; String uid = u?.uid ?? ''; var userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get(); String name = userDoc.data()?['username'] ?? 'User'; await FirebaseFirestore.instance.collection('posts').doc(reelId).collection('comments').add({'text': c.text.trim(), 'username': name, 'createdAt': FieldValue.serverTimestamp()}); c.clear(); })])]));
   }
 }
