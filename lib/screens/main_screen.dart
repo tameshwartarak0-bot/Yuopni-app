@@ -36,10 +36,16 @@ class _MainScreenState extends State<MainScreen> {
         backgroundColor: Colors.black,
         builder: (_) => CreateSheet()
       ).whenComplete(() {
-        // FIX: Create se Camera/Upload khule toh gaana band hi rahe
+        // FINAL FIX: Sirf Reel page pe ho tabhi resume karo
         Future.delayed(const Duration(milliseconds: 500), () {
+          if (!mounted) return;
+          // Agar Camera/Upload khula toh current nahi hoga, toh pause hi rehne do
           if (ModalRoute.of(context)?.isCurrent == true) {
-            pauseReelsNotifier.value = false;
+            if (_index == 1) {
+              pauseReelsNotifier.value = false; // Sirf Reel pe ho toh bajao
+            } else {
+              pauseReelsNotifier.value = true; // Home/Message/Profile pe ho toh band rakho
+            }
           }
         });
       });
@@ -52,6 +58,7 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
 
+    // FIX: Sirf Reel index (1) pe false, baaki sab pe true
     pauseReelsNotifier.value = (i != 2);
     setState(() => _index = i > 1 ? i - 1 : i);
   }
@@ -59,7 +66,7 @@ class _MainScreenState extends State<MainScreen> {
   Future<bool> _onWillPop() async {
     if (_index != 0) {
       setState(() => _index = 0);
-      pauseReelsNotifier.value = true;
+      pauseReelsNotifier.value = true; // Home pe aaye toh Reel band
       return false;
     }
     if (_lastBackPress == null || DateTime.now().difference(_lastBackPress!) > const Duration(seconds: 2)) {
