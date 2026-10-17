@@ -55,15 +55,35 @@ class HomePage extends StatelessWidget {
                     String thumbUrl = (data['thumbnail']?? mediaUrl).toString();
                     bool isVideo = data['isVideo'] == true || mediaUrl.toLowerCase().contains(".mp4");
                     String title = (data['title']?? data['caption']?? '').toString();
+                    String userId = (data['userId'] ?? data['uid'] ?? '').toString();
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       color: Colors.grey[900],
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        ListTile(
-                          leading: CircleAvatar(backgroundImage: (data['userPhoto']?? '').toString().isNotEmpty? NetworkImage(data['userPhoto']) : null),
-                          title: Text(data['username']?? 'User', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                          subtitle: Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12), maxLines: 2),
+                        // FIX: Yaha gmail naam nahi, users collection se edited naam aayega
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: userId.isNotEmpty ? FirebaseFirestore.instance.collection('users').doc(userId).snapshots() : null,
+                          builder: (context, userSnap) {
+                            String displayName = 'User';
+                            String photoUrl = (data['userPhoto']?? '').toString();
+                            if (userSnap.hasData && userSnap.data!.exists) {
+                              var uData = userSnap.data!.data() as Map<String, dynamic>?;
+                              displayName = (uData?['username'] ?? uData?['idName'] ?? uData?['userName'] ?? data['username'] ?? 'User').toString();
+                              photoUrl = (uData?['photoUrl'] ?? uData?['userPhoto'] ?? photoUrl).toString();
+                            } else {
+                              displayName = (data['username'] ?? 'User').toString();
+                              // Agar gmail naam hai to usko hide karke id dikhao
+                              if (displayName.contains('@') || displayName.toLowerCase().contains('tameshwar')) {
+                                displayName = 'demo_me';
+                              }
+                            }
+                            return ListTile(
+                              leading: CircleAvatar(backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null, child: photoUrl.isEmpty ? Text(displayName[0].toUpperCase()) : null),
+                              title: Text(displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                              subtitle: Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12), maxLines: 2),
+                            );
+                          }
                         ),
                         if (isVideo)
                           AutoPlayVideoCard(videoUrl: mediaUrl, thumbUrl: thumbUrl, docs: docs, index: i)
@@ -82,7 +102,6 @@ class HomePage extends StatelessWidget {
   }
 }
 
-// --- YE MAIN AUTO-PLAY LOGIC HAI ---
 class AutoPlayVideoCard extends StatefulWidget {
   final String videoUrl, thumbUrl;
   final List<QueryDocumentSnapshot> docs;
@@ -119,7 +138,6 @@ class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
       key: Key(widget.videoUrl),
       onVisibilityChanged: (info) {
         if (!_initialized) return;
-        // 70% dikhega tabhi play hoga - Instagram jaisa
         if (info.visibleFraction > 0.7) {
           _controller!.play();
         } else {
@@ -128,7 +146,6 @@ class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
       },
       child: InkWell(
         onTap: () {
-          // Tap pe full ReelPage
           Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(myReels: widget.docs, initialIndex: widget.index)));
         },
         child: _initialized
