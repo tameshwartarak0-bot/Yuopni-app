@@ -10,6 +10,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
 import 'upload_page.dart';
 import '../data/songs_data.dart';
+import 'main_screen.dart'; // FIX: Reel pause ke liye
 
 class CameraPage extends StatefulWidget {
   const CameraPage({super.key});
@@ -44,7 +45,12 @@ class _CameraPageState extends State<CameraPage> {
     {"name": "Natural", "filter": const ColorFilter.matrix([1.05, 0, 0, 0, 3, 0, 1.05, 0, 0, 3, 0, 0, 1.05, 0, 3, 0, 0, 0, 1, 0])},
   ];
 
-  @override void initState(){ super.initState(); _initCamOnce(); _audio.setLoopMode(LoopMode.one); }
+  @override void initState(){ 
+    super.initState(); 
+    pauseReelsNotifier.value = true; // FIX: Camera khulte hi reel band
+    _initCamOnce(); 
+    _audio.setLoopMode(LoopMode.one); 
+  }
 
   Future<void> _initCamOnce() async {
     var camStatus = await Permission.camera.status;
@@ -196,14 +202,14 @@ class _CameraPageState extends State<CameraPage> {
     showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1A1A1A), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (_) => Container(padding: const EdgeInsets.all(16), height: 140, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Center(child: Container(width:40,height:4,decoration:BoxDecoration(color:Colors.white24,borderRadius:BorderRadius.circular(10)))), const SizedBox(height:12), const Text("Beauty Filters", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height:12), Expanded(child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: _filters.length, itemBuilder: (_, i){ bool sel = _selectedFilter == i; return GestureDetector(onTap: (){ setState(()=>_selectedFilter=i); Navigator.pop(context); }, child: Container(margin: const EdgeInsets.only(right:10), child: Column(children:[Container(width:60,height:60, decoration: BoxDecoration(color: sel? Colors.pink : Colors.white24, shape: BoxShape.circle, border: Border.all(color: sel? Colors.pinkAccent : Colors.transparent, width:2)), child: Icon(Icons.face_retouching_natural, color: sel? Colors.white : Colors.white70)), const SizedBox(height:5), Text(_filters[i]['name'], style: TextStyle(color: sel? Colors.pink : Colors.white70, fontSize:12))]))) ;}))])));
   }
 
-  // === YAHI MAIN FIX HAI ===
   Future<void> _goToUpload() async {
-    _audio.stop();
+    await _audio.stop();
+    _timer?.cancel();
+    await _vCtrl?.pause();
     if(_file==null) return;
     try{
       File original = File(_file!.path);
       File fileToSend = original;
-      // Agar video hai to.mp4 extension pakka karo
       if(_mode!= "Story"){
         final newPath = "${Directory.systemTemp.path}/${DateTime.now().millisecondsSinceEpoch}.mp4";
         fileToSend = await original.copy(newPath);
@@ -218,7 +224,15 @@ class _CameraPageState extends State<CameraPage> {
     }
   }
 
-  @override void dispose(){ _cam?.dispose(); _vCtrl?.dispose(); _timer?.cancel(); _audio.dispose(); super.dispose(); }
+  @override void dispose(){ 
+    _cam?.dispose(); 
+    _vCtrl?.pause();
+    _vCtrl?.dispose(); 
+    _timer?.cancel(); 
+    _audio.stop();
+    _audio.dispose(); 
+    super.dispose(); 
+  }
 
   @override Widget build(BuildContext context){
     if(_file!=null){
@@ -234,7 +248,7 @@ class _CameraPageState extends State<CameraPage> {
     }
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text("Create $_mode"), leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> Navigator.pop(context)), actions: [IconButton(icon: const Icon(Icons.cameraswitch, color: Colors.white), onPressed: _switchCamera), if(_song!="No Song") Center(child: Text(_song, style: const TextStyle(color: Colors.pink, fontSize: 11))), IconButton(icon: const Icon(Icons.music_note, color: Colors.white), onPressed: _pickSong)]),
+      appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white, title: Text("Create $_mode"), leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: (){ _audio.stop(); Navigator.pop(context); }), actions: [IconButton(icon: const Icon(Icons.cameraswitch, color: Colors.white), onPressed: _switchCamera), if(_song!="No Song") Center(child: Text(_song, style: const TextStyle(color: Colors.pink, fontSize: 11))), IconButton(icon: const Icon(Icons.music_note, color: Colors.white), onPressed: _pickSong)]),
       body: Stack(children:[
         Positioned.fill(child: _init? ColorFiltered(colorFilter: _filters[_selectedFilter]['filter'], child: CameraPreview(_cam!)) : const Center(child: CircularProgressIndicator(color: Colors.white))),
         Positioned(top:20,left:0,right:0,child: Row(mainAxisAlignment: MainAxisAlignment.center, children: ["Reel","Video","Story"].map((e)=> GestureDetector(onTap: ()=>setState(()=>_mode=e), child: Container(margin: const EdgeInsets.symmetric(horizontal:5), padding: const EdgeInsets.symmetric(horizontal:18,vertical:8), decoration: BoxDecoration(color: _mode==e?Colors.white:Colors.white24, borderRadius: BorderRadius.circular(20)), child: Text(e, style: TextStyle(color: _mode==e?Colors.black:Colors.white, fontWeight: FontWeight.bold))))).toList())),
