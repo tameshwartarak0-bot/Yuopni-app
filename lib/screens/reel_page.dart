@@ -63,7 +63,7 @@ class ReelItem extends StatefulWidget {
 }
 
 class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin {
-  @override bool get wantKeepAlive => true;
+  @override bool get wantKeepAlive => false; // FIX 1: Chipakna khatam
   VideoPlayerController? _videoController;
   ChewieController? _chewieController;
   final AudioPlayer _songPlayer = AudioPlayer();
@@ -72,7 +72,6 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
   @override void initState() {
     super.initState();
     String url = (widget.data['mediaUrl']?? widget.data['videoUrl']?? '').toString().trim();
-    String songUrl = (widget.data['songUrl']?? '').toString().trim();
     _likeCount = (widget.data['likes'] as List?)?.length?? 0;
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid!= null) _liked = (widget.data['likes'] as List?)?.contains(uid)?? false;
@@ -83,13 +82,15 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
         if (!mounted) return;
         _chewieController = ChewieController(
           videoPlayerController: _videoController!,
-          autoPlay: true,
+          autoPlay: false, // FIX 2: Auto play band, hum khud play karenge
           looping: true,
           showControls: false,
           aspectRatio: _videoController!.value.aspectRatio
         );
         setState(() => _isInit = true);
-        if (widget.isActive) {
+        // FIX 3: Sirf tab chalao jab active ho aur global pause na ho
+        if (widget.isActive && !pauseReelsNotifier.value) {
+          String songUrl = (widget.data['songUrl']?? '').toString().trim();
           _playReel(songUrl);
         }
       }).catchError((e) { if (mounted) setState(() => _isError = true); });
@@ -99,11 +100,10 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     pauseReelsNotifier.addListener(_handleGlobalPause);
   }
 
-  // FINAL FIX: Video turant chalega, song background me load hoga - chipkna khatam
   Future<void> _playReel(String songUrl) async {
-    if (_videoController == null) return;
+    if (_videoController == null || !mounted) return;
+    if (pauseReelsNotifier.value || !widget.isActive) return; // FIX 4: Agar pause hai toh play hi mat karo
 
-    // Video ko turant play karo
     if (!_videoController!.value.isPlaying) {
       _videoController!.play();
     }
@@ -111,14 +111,12 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     if (songUrl.isNotEmpty) {
       _videoController!.setVolume(0);
       try {
-        // Song async load, video ko block nahi karega
-        _songPlayer.setUrl(songUrl).then((_) {
-          _songPlayer.setLoopMode(LoopMode.one);
-          _songPlayer.setVolume(1.0);
-          if (widget.isActive && mounted &&!pauseReelsNotifier.value) {
-            _songPlayer.play();
-          }
-        });
+        await _songPlayer.setUrl(songUrl);
+        _songPlayer.setLoopMode(LoopMode.one);
+        _songPlayer.setVolume(1.0);
+        if (widget.isActive && mounted && !pauseReelsNotifier.value) {
+          _songPlayer.play();
+        }
       } catch(e) {}
     } else {
       _videoController!.setVolume(1.0);
@@ -127,11 +125,11 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
   }
 
   void _handleGlobalPause() {
-    if (!mounted || _videoController == null ||!_isInit) return;
-    if (pauseReelsNotifier.value) {
+    if (!mounted || _videoController == null || !_isInit) return;
+    if (pauseReelsNotifier.value || !widget.isActive) {
       _videoController!.pause();
       _songPlayer.pause();
-    } else if (widget.isActive) {
+    } else {
       String songUrl = (widget.data['songUrl']?? '').toString().trim();
       _playReel(songUrl);
     }
@@ -139,9 +137,9 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
 
   @override void didUpdateWidget(covariant ReelItem oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.isActive!= widget.isActive) {
+    if (oldWidget.isActive != widget.isActive) {
       String songUrl = (widget.data['songUrl']?? '').toString().trim();
-      if (widget.isActive &&!pauseReelsNotifier.value) {
+      if (widget.isActive && !pauseReelsNotifier.value) {
         _playReel(songUrl);
       } else {
         _videoController?.pause();
@@ -152,8 +150,10 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
 
   @override void dispose() {
     pauseReelsNotifier.removeListener(_handleGlobalPause);
+    _videoController?.pause();
     _videoController?.dispose();
     _chewieController?.dispose();
+    _songPlayer.stop();
     _songPlayer.dispose();
     super.dispose();
   }
@@ -171,7 +171,10 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     if (_liked) ref.update({'likes': FieldValue.arrayUnion([uid])}); else ref.update({'likes': FieldValue.arrayRemove([uid])});
   }
   void _pauseForPopup() { pauseReelsNotifier.value = true; }
-  void _resumeAfterPopup() { pauseReelsNotifier.value = false; }
+  void _resumeAfterPopup() { 
+    // FIX 5: Sirf tab resume karo jab Reel page pe ho
+    if (widget.isActive) pauseReelsNotifier.value = false; 
+  }
 
   Future<void> _sendReelToChat(String chatId, String otherName) async {
     if (!_requireLogin()) return;
@@ -206,7 +209,7 @@ class _ReelItemState extends State<ReelItem> with AutomaticKeepAliveClientMixin 
     String songName = (widget.data['songName']?? 'Original audio - $username').toString();
     String userPhoto = (widget.data['userPhoto']?? '').toString();
     return Container(color: Colors.black, child: Stack(fit: StackFit.expand, children: [
-      _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white24, size: 40)) : _isInit && _videoController!= null && _chewieController!= null? GestureDetector(onTap: (){ if(_videoController!.value.isPlaying) { _videoController!.pause(); _songPlayer.pause(); } else { _videoController!.play(); if((_songPlayer.playerState.playing==false) && (widget.data['songUrl']?? '').toString().isNotEmpty) _songPlayer.play(); } }, child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: Chewie(controller: _chewieController!)))) : const Center(child: CircularProgressIndicator(color: Colors.white)),
+      _isError? const Center(child: Icon(Icons.broken_image, color: Colors.white24, size: 40)) : _isInit && _videoController!= null && _chewieController!= null? GestureDetector(onTap: (){ if(_videoController!.value.isPlaying) { _videoController!.pause(); _songPlayer.pause(); } else { if(!pauseReelsNotifier.value) { _videoController!.play(); if((_songPlayer.playerState.playing==false) && (widget.data['songUrl']?? '').toString().isNotEmpty) _songPlayer.play(); } } }, child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: Chewie(controller: _chewieController!)))) : const Center(child: CircularProgressIndicator(color: Colors.white)),
       Positioned(bottom: 35, left: 15, right: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [CircleAvatar(radius: 16, backgroundImage: userPhoto.isNotEmpty? NetworkImage(userPhoto): null), const SizedBox(width: 8), Text("@$username", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]), const SizedBox(height: 8), if(caption.isNotEmpty) Text(caption, maxLines: 2, style: const TextStyle(color: Colors.white)), Row(children: [const Icon(Icons.music_note, color: Colors.white, size: 14), const SizedBox(width: 5), Expanded(child: Text(songName, maxLines: 1, style: const TextStyle(color: Colors.white, fontSize: 12)))]),
       ])),
       Positioned(right: 5, bottom: 90, child: Column(children: [IconButton(icon: Icon(_liked? Icons.favorite : Icons.favorite_border, color: _liked? Colors.red : Colors.white, size: 32), onPressed: _toggleLike), Text("$_likeCount", style: const TextStyle(color: Colors.white, fontSize: 12)), const SizedBox(height: 15), IconButton(icon: const Icon(Icons.comment_outlined, color: Colors.white, size: 28), onPressed: _openComment), const Text("Comment", style: TextStyle(color: Colors.white, fontSize: 10)), const SizedBox(height: 15), IconButton(icon: const Icon(Icons.share, color: Colors.white, size: 28), onPressed: _onShare), const Text("Share", style: TextStyle(color: Colors.white, fontSize: 10))])),
