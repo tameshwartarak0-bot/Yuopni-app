@@ -31,17 +31,18 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _loadProfile() async {
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if(uid == null) return;
-    await _saveCurrentAccount();
     var snap = await FirebaseFirestore.instance.collection('users').doc(uid).get();
     if(snap.exists){
       var d = snap.data() as Map<String,dynamic>;
       setState(() {
-        myDisplayName = (d['name']?? d['displayName']?? d['username']?? "").toString();
+        // FIX: Gmail naam kabhi nahi, sirf edited username
+        myDisplayName = (d['username']?? d['name']?? d['displayName']?? "demo_me").toString();
         _loading = false;
       });
     } else {
       setState(() => _loading = false);
     }
+    await _saveCurrentAccount();
     await _loadSavedAccounts();
   }
 
@@ -106,7 +107,8 @@ class _ProfilePageState extends State<ProfilePage> {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
     final prefs = await SharedPreferences.getInstance();
-    String name = myDisplayName.isNotEmpty? myDisplayName : user.displayName?? "User";
+    // FIX: Gmail naam/email save hi mat karo, sirf edited naam
+    String name = myDisplayName.isNotEmpty? myDisplayName : "demo_me";
     Map<String, dynamic> acc = {
       'uid': user.uid,
       'name': name,
@@ -242,7 +244,7 @@ class _ProfilePageState extends State<ProfilePage> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
           title: Text("Switch to ${acc['name']}", style: const TextStyle(color: Colors.black, fontSize: 15, fontWeight: FontWeight.bold)),
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text("Enter password for ${acc['email']}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            const Text("Enter password", style: TextStyle(color: Colors.grey, fontSize: 12)),
             const SizedBox(height: 10),
             TextField(controller: passCtrl, obscureText: true, style: const TextStyle(color: Colors.black), decoration: InputDecoration(hintText: "Password", filled: true, fillColor: Colors.grey[100], border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none))),
             const SizedBox(height: 10),
@@ -280,12 +282,10 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // FIX 1: LOGOUT BUG KHATAM - seenDemo wala line hata diya
   Future<void> _logout() async {
     await _saveCurrentAccount();
     try { await GoogleSignIn().signOut(); } catch(_){}
     await FirebaseAuth.instance.signOut();
-    // main.dart ka StreamBuilder khud DemoPage pe le jayega
   }
 
   Future<void> _deletePost(String postId, Map<String, dynamic> data) async {
@@ -332,15 +332,13 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 10),
             ListTile(
               leading: CircleAvatar(radius: 22, backgroundImage: FirebaseAuth.instance.currentUser?.photoURL!= null && FirebaseAuth.instance.currentUser!.photoURL!.isNotEmpty? NetworkImage(FirebaseAuth.instance.currentUser!.photoURL!) : null, child: (FirebaseAuth.instance.currentUser?.photoURL==null || FirebaseAuth.instance.currentUser!.photoURL!.isEmpty)? Text((myDisplayName.isNotEmpty? myDisplayName[0] : "U").toUpperCase()) : null),
-              title: Text(myDisplayName.isNotEmpty? myDisplayName : FirebaseAuth.instance.currentUser?.displayName?? "Current User", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-              subtitle: Text(FirebaseAuth.instance.currentUser?.email?? "", style: const TextStyle(fontSize: 11)),
+              title: Text(myDisplayName.isNotEmpty? myDisplayName : "demo_me", style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               trailing: const Icon(Icons.check_circle, color: Colors.green),
             ),
             const Divider(),
       ...savedAccounts.where((a) => a['uid']!= FirebaseAuth.instance.currentUser?.uid).map((acc) => ListTile(
                   leading: acc['photo']!= ""? CircleAvatar(radius: 22, backgroundImage: NetworkImage(acc['photo'])) : CircleAvatar(radius: 22, child: Text(acc['name'].toString().isNotEmpty? acc['name'][0].toUpperCase() : "U")),
                   title: Text(acc['name'], style: const TextStyle(color: Colors.black)),
-                  subtitle: Text(acc['email'], style: const TextStyle(fontSize: 11)),
                   trailing: IconButton(icon: const Icon(Icons.delete, size: 20, color: Colors.grey), onPressed: ()=> _removeAccount(acc['uid'])),
                   onTap: () async {
                     Navigator.pop(context);
@@ -390,7 +388,6 @@ class _ProfilePageState extends State<ProfilePage> {
     return docs;
   }
 
-  // FIX 2: VIDEO THUMBNAIL KA FIX - ab photo jaisa hi video ka thumb dikhega
   Widget _buildMedia(String url, bool isVideo) {
     if (url.isEmpty) {
       return Container(
@@ -428,7 +425,7 @@ class _ProfilePageState extends State<ProfilePage> {
             : Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(myDisplayName.isNotEmpty? myDisplayName : (user?.displayName?? "Yuopni User"), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
+                Text(myDisplayName.isNotEmpty? myDisplayName : "demo_me", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black)),
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: _editName,
@@ -440,8 +437,6 @@ class _ProfilePageState extends State<ProfilePage> {
                 )
               ],
             ),
-            const SizedBox(height: 4),
-            Text(user?.email?? "", style: const TextStyle(color: Colors.grey, fontSize: 12)),
             const SizedBox(height: 12),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               ElevatedButton(onPressed: _editName, style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white), child: const Text("Edit ID")),
@@ -472,7 +467,6 @@ class _ProfilePageState extends State<ProfilePage> {
                           String mediaUrl = (d['mediaUrl']?? d['imageUrl']?? '').toString();
                           bool isVideo = d['isVideo'] == true || videoUrl.isNotEmpty || mediaUrl.toLowerCase().contains('.mp4');
                           String displayUrl = isVideo? (thumb.isNotEmpty? thumb : mediaUrl) : mediaUrl;
-                          // Agar displayUrl abhi bhi mp4 hai to khali chhod do taki play icon dikhe
                           if(displayUrl.toLowerCase().contains('.mp4')) displayUrl = thumb;
 
                           return GestureDetector(
