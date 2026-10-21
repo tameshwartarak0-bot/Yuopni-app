@@ -17,7 +17,7 @@ class UploadPage extends StatefulWidget {
   final bool? isVideo;
   final bool? isLong;
   final String? songName;
-  final String? songUrl; // <-- ADD KIYA, iski wajah se build fail ho raha tha
+  final String? songUrl;
   const UploadPage({super.key, this.prefile, this.isVideo, this.isLong, this.songName, this.songUrl});
   @override State<UploadPage> createState() => _UploadPageState();
 }
@@ -42,7 +42,7 @@ class _UploadPageState extends State<UploadPage> {
   static const String cloudName = "b7qkm3lk";
   static const String uploadPreset = "yuopni_upload";
   final FlutterLocalNotificationsPlugin _notif = FlutterLocalNotificationsPlugin();
-  static const String bucketName = "yuopni-videos";
+  static const String bucketName = "videos"; // FIX: pehle yuopni-videos tha
 
   @override
   void initState() {
@@ -71,6 +71,18 @@ class _UploadPageState extends State<UploadPage> {
   }
 
   String _fmt(int sec){ final m = sec ~/ 60; final s = sec % 60; return "$m:${s.toString().padLeft(2,'0')}"; }
+
+  // THUMBNAIL GENERATE LOGIC
+  String _getCloudinaryThumbnail(String videoUrl) {
+    try {
+      // https://res.cloudinary.com/b7qkm3lk/video/upload/v123/file.mp4 -> .../video/upload/so_0,w_400,h_700,c_fill/v123/file.jpg
+      String thumb = videoUrl.replaceFirst('/video/upload/', '/video/upload/so_0,w_400,h_700,c_fill/');
+      thumb = thumb.replaceAll('.mp4', '.jpg').replaceAll('.mov', '.jpg');
+      return thumb;
+    } catch (e) {
+      return videoUrl.replaceAll('.mp4', '.jpg');
+    }
+  }
 
   Future<void> _loadVideo(File file) async {
     await _trimmer.loadVideo(videoFile: file);
@@ -139,7 +151,6 @@ class _UploadPageState extends State<UploadPage> {
     await _updateNotif(0);
     try{
       File fileToUpload = _file!;
-      // FIXED TRIMMER - v5.0.0 me trimmedVideoFileName nahi hota
       if(_showTrimmer && _isVideo &&!_isLongVideo && _endValue > _startValue){
         await _trimmer.saveTrimmedVideo(startValue: _startValue, endValue: _endValue, onSave: (path){ if(path!=null && path.isNotEmpty) fileToUpload = File(path); });
         await Future.delayed(const Duration(milliseconds: 800));
@@ -148,23 +159,62 @@ class _UploadPageState extends State<UploadPage> {
       if(_isLongVideo){ url=await _uploadLongToSupabase(fileToUpload, (p){ if(mounted) setState(()=>_progress=p); }); }
       else { url=await _uploadToCloudinary(fileToUpload, _isVideo, (p){ if(mounted) setState(()=>_progress=p); }); }
 
+      // FIXED THUMBNAIL LOGIC
+      String thumbnailUrl;
+      if (_isVideo) {
+        thumbnailUrl = _isLongVideo ? url : _getCloudinaryThumbnail(url); // Long video me bhi video url, profile me gradient dikhega
+      } else {
+        thumbnailUrl = url; // Photo ke liye same
+      }
+
       String title=_titleCtrl.text.trim();
       DocumentReference docRef=FirebaseFirestore.instance.collection('posts').doc();
       String docId=docRef.id; String shareLink="https://yuopni.com/video?id=$docId";
+      
       await docRef.set({
         'uid': FirebaseAuth.instance.currentUser!.uid,
-        'title': title, 'title_search': title.toLowerCase(), 'title_lower': title.toLowerCase(),
-        'description': _descCtrl.text.trim(), 'songName': _song, 'songUrl': _songUrl,
-        'mediaUrl': url, 'videoUrl': url, 'imageUrl': url, 'thumbnail': url,
-        'isVideo': _isVideo, 'isLongVideo': _isLongVideo,
+        'title': title, 
+        'title_search': title.toLowerCase(), 
+        'title_lower': title.toLowerCase(),
+        'description': _descCtrl.text.trim(), 
+        'songName': _song, 
+        'songUrl': _songUrl,
+        'mediaUrl': url, 
+        'videoUrl': url, 
+        'imageUrl': url, 
+        'thumbnail': thumbnailUrl, // AB SAHI THUMBNAIL
+        'isVideo': _isVideo, 
+        'isLongVideo': _isLongVideo,
         'duration': _endValue>0? (_endValue - _startValue).toInt() : _previewCtrl?.value.duration.inSeconds?? 0,
         'durationText': _endValue>0? _fmt((_endValue - _startValue).toInt()) : (_previewCtrl!=null? _fmt(_previewCtrl!.value.duration.inSeconds) : "0:00"),
         'username': FirebaseAuth.instance.currentUser!.displayName?? "User",
         'userPhoto': FirebaseAuth.instance.currentUser!.photoURL?? "",
         'createdAt': FieldValue.serverTimestamp(),
         'timestamp': FieldValue.serverTimestamp(),
-        'likes': [], 'views': 0, 'docId': docId, 'shareLink': shareLink,
+        'likes': [], 
+        'views': 0, 
+        'views_count': 0,
+        'viewsCount': 0,
+        'likes_count': 0,
+        'comments_count': 0,
+        'docId': docId, 
+        'shareLink': shareLink,
+        'type': _isVideo ? 'reel' : 'post',
       });
+
+      // Supabase me bhi save karo taaki friends/views feature kaam kare
+      try {
+        await Supabase.instance.client.from('posts').insert({
+          'uid': FirebaseAuth.instance.currentUser!.uid,
+          'caption': title,
+          'media_url': url,
+          'thumbnail': thumbnailUrl,
+          'type': _isVideo ? 'reel' : 'post',
+          'song_name': _song,
+          'is_long': _isLongVideo,
+        });
+      } catch(e) { print("Supabase insert error $e"); }
+
       await _notif.cancel(0);
       try{ isUploadingGlobal.value=false; globalUploadProgress.value=0; }catch(e){}
       _audioPlayer.stop();
