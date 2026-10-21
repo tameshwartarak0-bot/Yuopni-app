@@ -24,7 +24,6 @@ dependencies:
   share_plus: ^10.1.3
   flutter_local_notifications: ^17.1.2
   dio: ^5.7.0
-  chewie: ^1.8.5
   pip_view: ^0.9.7    
   miniplayer: ^1.0.1     
   audio_service: ^0.18.15   
@@ -37,6 +36,10 @@ dependencies:
   video_thumbnail: ^0.5.3
   path_provider: ^2.1.2
   flutter_deepar: ^0.1.11
+  video_compress: ^3.1.4
+  cached_video_player: ^2.0.4
+  better_player_enhanced: ^1.0.3
+  flutter_cache_manager: ^3.3.2
 
 dev_dependencies:
   flutter_test:
