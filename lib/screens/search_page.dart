@@ -1,159 +1,130 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'user_profile_view_page.dart'; // naya page niche diya hai
 
 class SearchPage extends StatefulWidget {
-  @override
-  _SearchPageState createState() => _SearchPageState();
+  const SearchPage({super.key});
+  @override State<SearchPage> createState() => _SearchPageState();
 }
 
-class _SearchPageState extends State<SearchPage> {
-  TextEditingController _ctrl = TextEditingController();
-  String _query = "";
+class _SearchPageState extends State<SearchPage> with SingleTickerProviderStateMixin {
+  final _searchCtrl = TextEditingController();
+  String query = "";
+  late TabController _tabCtrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl.addListener(() {
-      setState(() => _query = _ctrl.text.trim().toLowerCase());
-    });
+    _tabCtrl = TabController(length: 3, vsync: this);
   }
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
         backgroundColor: Colors.black,
-        appBar: AppBar(
-          backgroundColor: Colors.black,
-          title: TextField(
-            controller: _ctrl,
-            autofocus: true,
-            style: TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: "ID, Reel, Video search karo...",
-              hintStyle: TextStyle(color: Colors.white54),
-              border: InputBorder.none,
-              suffixIcon: _query.isNotEmpty? IconButton(icon: Icon(Icons.clear, color: Colors.white), onPressed: ()=> _ctrl.clear()) : null,
-            ),
+        leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: ()=> Navigator.pop(context)),
+        title: TextField(
+          controller: _searchCtrl,
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: "Search Yuopni...", // YAHAN CHANGE KIYA
+            hintStyle: TextStyle(color: Colors.white54),
+            border: InputBorder.none,
           ),
-          bottom: TabBar(
-            indicatorColor: Colors.pink,
+          onChanged: (v) => setState(()=> query = v.trim().toLowerCase()),
+        ),
+      ),
+      body: Column(
+        children: [
+          TabBar(
+            controller: _tabCtrl,
             labelColor: Colors.pink,
             unselectedLabelColor: Colors.white54,
-            tabs: [
-              Tab(text: "Users"),
-              Tab(text: "Posts"),
-              Tab(text: "Reels"),
-            ]),
-        ),
-        body: _query.isEmpty
-        ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.search, size: 60, color: Colors.grey),
-              SizedBox(height: 10),
-              Text("Search me ID se user ayega - Jo ID login me banayi hai", style: TextStyle(color: Colors.grey)),
-            ]))
-            : TabBarView(
-                children: [
-                  // USERS TAB - Ab username se 100% ayega
-                  StreamBuilder<QuerySnapshot>(
-                    stream: _query.length < 1
-                    ? null
-                      : FirebaseFirestore.instance.collection('users').where('searchKeys', arrayContains: _query).limit(20).snapshots(),
-                    builder: (c, snap) {
-                      if (_query.length < 1) return Center(child: Text("1 akshar likho", style: TextStyle(color: Colors.white)));
-                      if (!snap.hasData) return Center(child: CircularProgressIndicator(color: Colors.pink));
-                      if (snap.data!.docs.isEmpty) {
-                        // Fallback 1: username_search se
-                        return StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance.collection('users').orderBy('username_search').startAt([_query]).endAt([_query + '\uf8ff']).limit(20).snapshots(),
-                          builder: (c2, snap2){
-                            if (!snap2.hasData) return Center(child: CircularProgressIndicator(color: Colors.pink));
-                            if (snap2.data!.docs.isEmpty) {
-                              // Fallback 2: direct username se
-                              return StreamBuilder<QuerySnapshot>(
-                                stream: FirebaseFirestore.instance.collection('users').where('username_search', isGreaterThanOrEqualTo: _query).where('username_search', isLessThan: _query + 'z').limit(20).snapshots(),
-                                builder: (c3, snap3){
-                                  if (!snap3.hasData) return Center(child: CircularProgressIndicator(color: Colors.pink));
-                                  if (snap3.data!.docs.isEmpty) return Center(child: Text("Koi user nahi mila: $_query", style: TextStyle(color: Colors.white)));
-                                  return _buildUserList(snap3.data!.docs);
-                                }
-                              );
-                            }
-                            return _buildUserList(snap2.data!.docs);
-                          }
-                        );
-                      }
-                      return _buildUserList(snap.data!.docs);
-                    },
-                  ),
-                  // POSTS TAB
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('posts').where('title_search', isGreaterThanOrEqualTo: _query).where('title_search', isLessThan: _query + '\uf8ff').limit(15).snapshots(),
-                    builder: (c, snap) {
-                      if (!snap.hasData) return Center(child: CircularProgressIndicator(color: Colors.pink));
-                      if (snap.data!.docs.isEmpty) return Center(child: Text("Koi post nahi mila", style: TextStyle(color: Colors.white)));
-                      return GridView.builder(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
-                        itemCount: snap.data!.docs.length,
-                        itemBuilder: (_, i) {
-                          var d = snap.data!.docs[i].data() as Map<String, dynamic>;
-                          String url = (d['thumbnail']?? d['mediaUrl']?? d['imageUrl']?? '').toString();
-                          return CachedNetworkImage(imageUrl: url, fit: BoxFit.cover, memCacheWidth: 300, errorWidget: (_,__,___)=> Icon(Icons.broken_image, color: Colors.white));
-                        },
-                      );
-                    },
-                  ),
-                  // REELS TAB
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('reels').where('title_search', isGreaterThanOrEqualTo: _query).where('title_search', isLessThan: _query + '\uf8ff').limit(15).snapshots(),
-                    builder: (c, snap) {
-                      if (!snap.hasData) return Center(child: CircularProgressIndicator(color: Colors.pink));
-                      if (snap.data!.docs.isEmpty) return Center(child: Text("Koi reel nahi mili", style: TextStyle(color: Colors.white)));
-                      return GridView.builder(
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2),
-                        itemCount: snap.data!.docs.length,
-                        itemBuilder: (_, i) {
-                          var d = snap.data!.docs[i].data() as Map<String, dynamic>;
-                          String url = (d['thumbnail']?? d['mediaUrl']?? d['videoUrl']?? '').toString();
-                          return Stack(fit: StackFit.expand, children: [
-                            CachedNetworkImage(imageUrl: url, fit: BoxFit.cover, memCacheWidth: 300),
-                            Center(child: Icon(Icons.play_circle_fill, color: Colors.white70)),
-                          ]);
-                        },
-                      );
-                    },
-                  ),
-                ],
-              ),
+            indicatorColor: Colors.pink,
+            tabs: const [Tab(text: "Users"), Tab(text: "Posts"), Tab(text: "Reels")],
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabCtrl,
+              children: [
+                _buildUsers(),
+                _buildPosts(),
+                _buildReels(),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildUserList(List<QueryDocumentSnapshot> docs){
+  Widget _buildUsers() {
+    if (query.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search, size: 80, color: Colors.white38),
+            SizedBox(height: 15),
+            Text("Search You", style: TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.bold)),
+            SizedBox(height: 5),
+            Text("Find friends, posts & reels on Yuopni", style: TextStyle(color: Colors.white38, fontSize: 13)),
+          ],
+        ),
+      );
+    }
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('users')
+          .where('username_search', isGreaterThanOrEqualTo: query)
+          .where('username_search', isLessThan: query + 'z')
+          .snapshots(),
+      builder: (c, snap) {
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+        // fallback search agar username_search field nahi hai
+        var docs = snap.data!.docs;
+        if (docs.isEmpty) {
+          return FutureBuilder<QuerySnapshot>(
+            future: FirebaseFirestore.instance.collection('users').get(),
+            builder: (c2, s2) {
+              if (!s2.hasData) return const Center(child: CircularProgressIndicator());
+              var filtered = s2.data!.docs.where((d) {
+                var data = d.data() as Map<String, dynamic>;
+                String name = (data['username'] ?? data['name'] ?? "").toString().toLowerCase();
+                return name.contains(query);
+              }).toList();
+              if (filtered.isEmpty) return const Center(child: Text("No User Found", style: TextStyle(color: Colors.white54)));
+              return _userList(filtered);
+            },
+          );
+        }
+        return _userList(docs);
+      },
+    );
+  }
+
+  Widget _userList(List<QueryDocumentSnapshot> docs) {
     return ListView.builder(
       itemCount: docs.length,
       itemBuilder: (_, i) {
-        var d = docs[i].data() as Map<String, dynamic>;
-        String photo = (d['photo']?? d['photoURL']?? '').toString();
-        String username = (d['username']?? d['name']?? 'User').toString();
-        String email = (d['email']?? '').toString();
-        String googleName = (d['googleName']?? d['name']?? '').toString();
-
+        var data = docs[i].data() as Map<String, dynamic>;
+        String uid = docs[i].id;
+        if (uid == FirebaseAuth.instance.currentUser?.uid) return const SizedBox.shrink();
+        String name = data['username'] ?? data['name'] ?? "User";
+        String photo = data['photoUrl'] ?? data['photo'] ?? data['userPhoto'] ?? "";
         return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: Colors.white10,
-            backgroundImage: photo.isNotEmpty? NetworkImage(photo) : null,
-            child: photo.isEmpty? Icon(Icons.person, color: Colors.white): null
-          ),
-          title: Text(username, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          subtitle: Text(googleName + " • " + email, style: TextStyle(color: Colors.white54, fontSize: 12)),
-          onTap: (){
-            // Yaha profile page pe le ja sakta hai
-          },
+          leading: CircleAvatar(backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null, backgroundColor: Colors.grey[800], child: photo.isEmpty ? Text(name[0].toUpperCase()) : null),
+          title: Text(name, style: const TextStyle(color: Colors.white)),
+          subtitle: Text(data['email'] ?? "", style: const TextStyle(color: Colors.white54, fontSize: 12)),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UserProfileViewPage(userId: uid))),
         );
       },
     );
   }
+
+  Widget _buildPosts() => Center(child: Text("Search '$query' in Posts", style: const TextStyle(color: Colors.white54)));
+  Widget _buildReels() => Center(child: Text("Search '$query' in Reels", style: const TextStyle(color: Colors.white54)));
 }
