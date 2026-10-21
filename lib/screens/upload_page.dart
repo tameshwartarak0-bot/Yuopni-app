@@ -13,6 +13,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path_provider/path_provider.dart';
 import '../global.dart';
 import '../data/songs_data.dart';
+import 'package:deepar_flutter/deepar_flutter.dart';
 
 class UploadPage extends StatefulWidget {
   final File? prefile;
@@ -84,7 +85,6 @@ class _UploadPageState extends State<UploadPage> {
     }
   }
 
-  // ===== NAYA FUNCTION - LOCAL THUMBNAIL BANAKE SUPABASE PE UPLOAD =====
   Future<String> _generateAndUploadThumbnail(File videoFile) async {
     try {
       final tempDir = await getTemporaryDirectory();
@@ -128,6 +128,21 @@ class _UploadPageState extends State<UploadPage> {
   Future<void> _pickImage() async { final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70); if(x!=null){ _previewCtrl?.dispose(); _previewCtrl=null; setState((){ _file=File(x.path); _isVideo=false; _isLongVideo=false; _showTrimmer=false; }); } }
   Future<void> _pickVideo() async { final x = await ImagePicker().pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 15)); if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=false; }); await _loadVideo(f); } }
   Future<void> _pickLongVideo() async { final x = await ImagePicker().pickVideo(source: ImageSource.gallery); if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=true; _showTrimmer=false; }); await _loadVideo(f); } }
+
+  // ===== AR FILTER FUNCTION =====
+  Future<void> _openARFilter() async {
+    File? result = await Navigator.push(context, MaterialPageRoute(builder: (_)=> const ARFilterPage()));
+    if(result != null){
+      _previewCtrl?.dispose();
+      _previewCtrl = null;
+      setState((){
+        _file = result;
+        _isVideo = false;
+        _isLongVideo = false;
+        _showTrimmer = false;
+      });
+    }
+  }
 
   Future<void> _selectSong() async {
     String search = "";
@@ -182,15 +197,12 @@ class _UploadPageState extends State<UploadPage> {
       if(_isLongVideo){ url=await _uploadLongToSupabase(fileToUpload, (p){ if(mounted) setState(()=>_progress=p); }); }
       else { url=await _uploadToCloudinary(fileToUpload, _isVideo, (p){ if(mounted) setState(()=>_progress=p); }); }
 
-      // ===== FINAL THUMBNAIL LOGIC - 100% FIX =====
       String thumbnailUrl = "";
       if (_isVideo) {
-        // Pehle local thumbnail banao - ye sabse best hai
         String localThumb = await _generateAndUploadThumbnail(fileToUpload);
         if(localThumb.isNotEmpty){
           thumbnailUrl = localThumb;
         } else {
-          // Agar local fail ho to Cloudinary ka use karo
           thumbnailUrl = _isLongVideo ? "" : _getCloudinaryThumbnail(url);
           if(thumbnailUrl.isEmpty) thumbnailUrl = url;
         }
@@ -248,7 +260,7 @@ class _UploadPageState extends State<UploadPage> {
       await _notif.cancel(0);
       try{ isUploadingGlobal.value=false; globalUploadProgress.value=0; }catch(e){}
       _audioPlayer.stop();
-      if(mounted){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload ho gaya! Thumbnail ban gaya ✅"))); Navigator.pop(context); }
+      if(mounted){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload ho gaya! ✅"))); Navigator.pop(context); }
     }catch(e){ await _notif.cancel(0); try{ isUploadingGlobal.value=false; }catch(_){} if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"))); }
     finally{ if(mounted) setState(()=>_isUploading=false); }
   }
@@ -269,12 +281,88 @@ class _UploadPageState extends State<UploadPage> {
         Container(height: 220, width: double.infinity, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)), child: _file==null? const Icon(Icons.videocam, size:60, color: Colors.green) : _isVideo? (_previewCtrl?.value.isInitialized==true? Stack(alignment: Alignment.center, children:[ClipRRect(borderRadius: BorderRadius.circular(12), child: AspectRatio(aspectRatio: _previewCtrl!.value.aspectRatio, child: VideoPlayer(_previewCtrl!))), GestureDetector(onTap: (){ setState((){ _previewCtrl!.value.isPlaying? _previewCtrl!.pause() : _previewCtrl!.play(); }); }, child: Icon(_previewCtrl!.value.isPlaying? Icons.pause_circle : Icons.play_circle, size:50, color: Colors.white70))]) : Center(child: Text(_file!.path.split('/').last, style: const TextStyle(color: Colors.white70)))) : ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_file!, fit: BoxFit.cover, width: double.infinity))),
         const SizedBox(height:12),
         if(_showTrimmer) Column(children: [const Text("30 Sec Trimmer - drag karke kaato", style: TextStyle(color: Colors.white, fontSize: 12)), const SizedBox(height: 8), TrimViewer(trimmer: _trimmer, viewerHeight: 50, viewerWidth: MediaQuery.of(context).size.width - 32, maxVideoLength: const Duration(seconds: 30), onChangeStart: (v)=> _startValue=v, onChangeEnd: (v)=> _endValue=v, onChangePlaybackState: (playing){ if(playing) _previewCtrl?.play(); else _previewCtrl?.pause(); }), Text("${_startValue.toStringAsFixed(1)}s - ${_endValue.toStringAsFixed(1)}s (Max 30s)", style: const TextStyle(color: Colors.white70, fontSize: 11)), const SizedBox(height: 12)]),
-        Row(children:[Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickImage, child: const Text("Photo"))), const SizedBox(width:6), Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickVideo, child: const Text("Reel 15m"))), const SizedBox(width:6), Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickLongVideo, style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text("Long 90m")))]),
+        Row(children:[
+          Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickImage, child: const Text("Photo"))),
+          const SizedBox(width:6),
+          Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickVideo, child: const Text("Reel 15m"))),
+          const SizedBox(width:6),
+          Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickLongVideo, style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text("Long 90m"))),
+        ]),
+        const SizedBox(height: 8),
+        SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.face_retouching_natural, color: Colors.yellow), label: const Text("AR Filter - Snapchat Jaisa", style: TextStyle(color: Colors.yellow)), style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.yellow)), onPressed: _isUploading? null : _openARFilter)),
         const SizedBox(height:20),
         if(_isUploading) Column(children:[LinearProgressIndicator(value: _progress/100, minHeight: 8, color: _isLongVideo?Colors.red:Colors.green, backgroundColor: Colors.white24), const SizedBox(height:10), Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai... $_song", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
         const SizedBox(height:10),
         SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _isUploading?null:_upload, style: ElevatedButton.styleFrom(backgroundColor: _isLongVideo?Colors.red:Colors.white, foregroundColor: _isLongVideo?Colors.white:Colors.black, padding: const EdgeInsets.symmetric(vertical:14)), child: Text(_isUploading? "${_progress.toStringAsFixed(0)}%..." : "Upload Karo"))),
       ])),
+    );
+  }
+}
+
+// ================= AR FILTER PAGE SAME FILE ME =================
+class ARFilterPage extends StatefulWidget {
+  const ARFilterPage({super.key});
+  @override State<ARFilterPage> createState() => _ARFilterPageState();
+}
+
+class _ARFilterPageState extends State<ARFilterPage> {
+  final String licenseKey = "d34371fc78c9d880ae286027c82450eb831d056033d75457f100d3dc8974d9d3f3ba6c77d912e58a";
+  DeepArController controller = DeepArController();
+  bool isInitialized = false;
+  int currentFilter = 0;
+  List<String> effects = ["aviators", "bigmouth", "dalmatian", "flowers", "koala", "lion", "smallface", "teddycigar"];
+
+  @override
+  void initState() {
+    super.initState();
+    initDeepAR();
+  }
+
+  Future<void> initDeepAR() async {
+    try {
+      await controller.initialize(licenseKey: licenseKey, resolution: Resolution.high);
+      if(mounted) setState(()=> isInitialized = true);
+      controller.switchEffect(effects[0]);
+    } catch (e) {
+      print("DeepAR Error: $e");
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.destroy();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(children: [
+        isInitialized ? DeepArPreview(controller) : const Center(child: CircularProgressIndicator(color: Colors.white)),
+        SafeArea(child: Padding(padding: const EdgeInsets.all(15), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          IconButton(onPressed: ()=> Navigator.pop(context), icon: const Icon(Icons.close, color: Colors.white, size: 30)),
+          const Text("Yuopni Filters", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          IconButton(onPressed: ()=> controller.flipCamera(), icon: const Icon(Icons.cameraswitch, color: Colors.white, size: 30)),
+        ]))),
+        Positioned(bottom: 20, left: 0, right: 0, child: Column(children: [
+          SizedBox(height: 80, child: ListView.builder(scrollDirection: Axis.horizontal, itemCount: effects.length, itemBuilder: (_, i){
+            return GestureDetector(onTap: (){
+              setState(()=> currentFilter = i);
+              controller.switchEffect(effects[i]);
+            }, child: Container(margin: const EdgeInsets.symmetric(horizontal: 6), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), decoration: BoxDecoration(color: currentFilter == i ? Colors.white : Colors.white24, borderRadius: BorderRadius.circular(15)), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              const Icon(Icons.face_retouching_natural, size: 28),
+              const SizedBox(height: 4),
+              Text(effects[i], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+            ])));
+          })),
+          const SizedBox(height: 15),
+          GestureDetector(onTap: () async {
+            File? file = await controller.takeScreenshot();
+            if(file != null && mounted) Navigator.pop(context, file);
+          }, child: Container(width: 75, height: 75, decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.white24, width: 4)), child: const Icon(Icons.camera_alt, size: 35))),
+        ])),
+      ]),
     );
   }
 }
