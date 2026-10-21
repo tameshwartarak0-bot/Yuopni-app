@@ -11,9 +11,9 @@ import 'package:just_audio/just_audio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter_deepar/flutter_deepar.dart';
 import '../global.dart';
 import '../data/songs_data.dart';
-import 'package:deepar_flutter/deepar_flutter.dart';
 
 class UploadPage extends StatefulWidget {
   final File? prefile;
@@ -88,23 +88,14 @@ class _UploadPageState extends State<UploadPage> {
   Future<String> _generateAndUploadThumbnail(File videoFile) async {
     try {
       final tempDir = await getTemporaryDirectory();
-      final thumbPath = await VideoThumbnail.thumbnailFile(
-        video: videoFile.path,
-        thumbnailPath: tempDir.path,
-        imageFormat: ImageFormat.JPEG,
-        maxHeight: 700,
-        quality: 75,
-      );
+      final thumbPath = await VideoThumbnail.thumbnailFile(video: videoFile.path, thumbnailPath: tempDir.path, imageFormat: ImageFormat.JPEG, maxHeight: 700, quality: 75);
       if (thumbPath == null) return "";
       File thumbFile = File(thumbPath);
       String uid = FirebaseAuth.instance.currentUser!.uid;
       String thumbName = "${uid}_thumb_${DateTime.now().millisecondsSinceEpoch}.jpg";
       await Supabase.instance.client.storage.from(bucketName).upload(thumbName, thumbFile, fileOptions: const FileOptions(upsert: true));
       return Supabase.instance.client.storage.from(bucketName).getPublicUrl(thumbName);
-    } catch (e) {
-      print("Thumbnail error: $e");
-      return "";
-    }
+    } catch (e) { return ""; }
   }
 
   Future<void> _loadVideo(File file) async {
@@ -129,7 +120,6 @@ class _UploadPageState extends State<UploadPage> {
   Future<void> _pickVideo() async { final x = await ImagePicker().pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 15)); if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=false; }); await _loadVideo(f); } }
   Future<void> _pickLongVideo() async { final x = await ImagePicker().pickVideo(source: ImageSource.gallery); if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=true; _showTrimmer=false; }); await _loadVideo(f); } }
 
-  // ===== AR FILTER FUNCTION =====
   Future<void> _openARFilter() async {
     File? result = await Navigator.push(context, MaterialPageRoute(builder: (_)=> const ARFilterPage()));
     if(result != null){
@@ -200,62 +190,32 @@ class _UploadPageState extends State<UploadPage> {
       String thumbnailUrl = "";
       if (_isVideo) {
         String localThumb = await _generateAndUploadThumbnail(fileToUpload);
-        if(localThumb.isNotEmpty){
-          thumbnailUrl = localThumb;
-        } else {
-          thumbnailUrl = _isLongVideo ? "" : _getCloudinaryThumbnail(url);
-          if(thumbnailUrl.isEmpty) thumbnailUrl = url;
-        }
+        thumbnailUrl = localThumb.isNotEmpty ? localThumb : (_isLongVideo ? url : _getCloudinaryThumbnail(url));
       } else {
         thumbnailUrl = url;
       }
 
       String title=_titleCtrl.text.trim();
       DocumentReference docRef=FirebaseFirestore.instance.collection('posts').doc();
-      String docId=docRef.id; String shareLink="https://yuopni.com/video?id=$docId";
-
+      String docId=docRef.id;
       await docRef.set({
         'uid': FirebaseAuth.instance.currentUser!.uid,
-        'title': title, 
-        'title_search': title.toLowerCase(), 
-        'title_lower': title.toLowerCase(),
-        'description': _descCtrl.text.trim(), 
-        'songName': _song, 
-        'songUrl': _songUrl,
-        'mediaUrl': url, 
-        'videoUrl': url, 
-        'imageUrl': url, 
-        'thumbnail': thumbnailUrl,
-        'isVideo': _isVideo, 
-        'isLongVideo': _isLongVideo,
+        'title': title, 'title_search': title.toLowerCase(), 'title_lower': title.toLowerCase(),
+        'description': _descCtrl.text.trim(), 'songName': _song, 'songUrl': _songUrl,
+        'mediaUrl': url, 'videoUrl': url, 'imageUrl': url, 'thumbnail': thumbnailUrl,
+        'isVideo': _isVideo, 'isLongVideo': _isLongVideo,
         'duration': _endValue>0? (_endValue - _startValue).toInt() : _previewCtrl?.value.duration.inSeconds?? 0,
         'durationText': _endValue>0? _fmt((_endValue - _startValue).toInt()) : (_previewCtrl!=null? _fmt(_previewCtrl!.value.duration.inSeconds) : "0:00"),
         'username': FirebaseAuth.instance.currentUser!.displayName?? "User",
         'userPhoto': FirebaseAuth.instance.currentUser!.photoURL?? "",
-        'createdAt': FieldValue.serverTimestamp(),
-        'timestamp': FieldValue.serverTimestamp(),
-        'likes': [], 
-        'views': 0, 
-        'views_count': 0,
-        'viewsCount': 0,
-        'likes_count': 0,
-        'comments_count': 0,
-        'docId': docId, 
-        'shareLink': shareLink,
-        'type': _isVideo ? 'reel' : 'post',
+        'createdAt': FieldValue.serverTimestamp(), 'timestamp': FieldValue.serverTimestamp(),
+        'likes': [], 'views': 0, 'views_count': 0, 'viewsCount': 0, 'likes_count': 0, 'comments_count': 0,
+        'docId': docId, 'shareLink': "https://yuopni.com/video?id=$docId", 'type': _isVideo ? 'reel' : 'post',
       });
 
       try {
-        await Supabase.instance.client.from('posts').insert({
-          'uid': FirebaseAuth.instance.currentUser!.uid,
-          'caption': title,
-          'media_url': url,
-          'thumbnail': thumbnailUrl,
-          'type': _isVideo ? 'reel' : 'post',
-          'song_name': _song,
-          'is_long': _isLongVideo,
-        });
-      } catch(e) { print("Supabase insert error $e"); }
+        await Supabase.instance.client.from('posts').insert({'uid': FirebaseAuth.instance.currentUser!.uid, 'caption': title, 'media_url': url, 'thumbnail': thumbnailUrl, 'type': _isVideo ? 'reel' : 'post', 'song_name': _song, 'is_long': _isLongVideo});
+      } catch(e) {}
 
       await _notif.cancel(0);
       try{ isUploadingGlobal.value=false; globalUploadProgress.value=0; }catch(e){}
@@ -299,7 +259,6 @@ class _UploadPageState extends State<UploadPage> {
   }
 }
 
-// ================= AR FILTER PAGE SAME FILE ME =================
 class ARFilterPage extends StatefulWidget {
   const ARFilterPage({super.key});
   @override State<ARFilterPage> createState() => _ARFilterPageState();
@@ -320,12 +279,10 @@ class _ARFilterPageState extends State<ARFilterPage> {
 
   Future<void> initDeepAR() async {
     try {
-      await controller.initialize(licenseKey: licenseKey, resolution: Resolution.high);
-      if(mounted) setState(()=> isInitialized = true);
+      var result = await controller.initialize(licenseKey: licenseKey, resolution: Resolution.high);
+      if(result.success && mounted) setState(()=> isInitialized = true);
       controller.switchEffect(effects[0]);
-    } catch (e) {
-      print("DeepAR Error: $e");
-    }
+    } catch (e) { print("DeepAR Error: $e"); }
   }
 
   @override
