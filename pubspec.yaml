@@ -4,6 +4,7 @@ publish_to: 'none'
 version: 1.0.5+7
 environment:
   sdk: '>=3.6.0 <4.0.0'
+
 dependencies:
   flutter:
     sdk: flutter
@@ -30,16 +31,20 @@ dependencies:
   wakelock_plus: ^1.2.10    
   app_links: ^6.3.2
   audioplayers: ^6.1.0
-  video_trimmer: ^5.0.0
+  video_trimmer: ^3.0.0
   just_audio: ^0.9.36
   visibility_detector: ^0.4.0+2
   video_thumbnail: ^0.5.3
   path_provider: ^2.1.2
-  flutter_deepar: ^0.1.11
   video_compress: ^3.1.4
   cached_video_player: ^2.0.4
   better_player_enhanced: ^1.0.3
   flutter_cache_manager: ^3.3.2
+  deepar_flutter: ^0.0.8
+
+# YE FIX HAI - screenshot wala error isi se khatam hoga
+dependency_overrides:
+  meta: ^1.17.0
 
 dev_dependencies:
   flutter_test:
@@ -48,3 +53,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/effects/
