@@ -13,6 +13,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path_provider/path_provider.dart';
 import '../global.dart';
 import '../data/songs_data.dart';
+import 'ar_filter_page.dart'; // AR Page import
 
 class UploadPage extends StatefulWidget {
   final File? prefile;
@@ -88,22 +89,14 @@ class _UploadPageState extends State<UploadPage> {
   Future<String> _generateAndUploadThumbnail(File videoFile) async {
     try {
       final tempDir = await getTemporaryDirectory();
-      final thumbPath = await VideoThumbnail.thumbnailFile(
-        video: videoFile.path,
-        thumbnailPath: tempDir.path,
-        imageFormat: ImageFormat.JPEG,
-        maxHeight: 700,
-        quality: 75,
-      );
+      final thumbPath = await VideoThumbnail.thumbnailFile(video: videoFile.path, thumbnailPath: tempDir.path, imageFormat: ImageFormat.JPEG, maxHeight: 700, quality: 75);
       if (thumbPath == null) return "";
       File thumbFile = File(thumbPath);
       String uid = FirebaseAuth.instance.currentUser!.uid;
       String thumbName = "${uid}_thumb_${DateTime.now().millisecondsSinceEpoch}.jpg";
       await Supabase.instance.client.storage.from(bucketName).upload(thumbName, thumbFile, fileOptions: const FileOptions(upsert: true));
       return Supabase.instance.client.storage.from(bucketName).getPublicUrl(thumbName);
-    } catch (e) {
-      return "";
-    }
+    } catch (e) { return ""; }
   }
 
   Future<void> _loadVideo(File file) async {
@@ -112,10 +105,7 @@ class _UploadPageState extends State<UploadPage> {
     _previewCtrl = VideoPlayerController.file(file)..initialize().then((_) {
       if(mounted){
         if(!_isLongVideo){
-          setState((){
-            _showTrimmer = true;
-            _endValue = _previewCtrl!.value.duration.inSeconds > 30? 30 : _previewCtrl!.value.duration.inSeconds.toDouble();
-          });
+          setState((){ _showTrimmer = true; _endValue = _previewCtrl!.value.duration.inSeconds > 30? 30 : _previewCtrl!.value.duration.inSeconds.toDouble(); });
         }
         _previewCtrl!.setLooping(true);
         _previewCtrl!.play();
@@ -138,10 +128,7 @@ class _UploadPageState extends State<UploadPage> {
           const SizedBox(height: 12),
           TextField(style: const TextStyle(color: Colors.white), decoration: InputDecoration(prefixIcon: const Icon(Icons.search, color: Colors.white54), hintText: "1000 songs me search...", hintStyle: const TextStyle(color: Colors.white54), filled: true, fillColor: Colors.white10, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))), onChanged: (v){ setM(()=> search=v); }),
           const SizedBox(height: 10),
-          Expanded(child: ListView.builder(itemCount: filtered.length, itemBuilder: (ctx,i){
-            var name = filtered[i];
-            return ListTile(title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 14)), leading: Icon(name==_song? Icons.radio_button_checked : Icons.radio_button_off, color: Colors.pink), onTap: (){ setState(()=> _song = name); Navigator.pop(context); _audioPlayer.stop(); });
-          })),
+          Expanded(child: ListView.builder(itemCount: filtered.length, itemBuilder: (ctx,i){ var name = filtered[i]; return ListTile(title: Text(name, style: const TextStyle(color: Colors.white, fontSize: 14)), leading: Icon(name==_song? Icons.radio_button_checked : Icons.radio_button_off, color: Colors.pink), onTap: (){ setState(()=> _song = name); Navigator.pop(context); _audioPlayer.stop(); }); })),
         ]));
       });
     });
@@ -184,12 +171,8 @@ class _UploadPageState extends State<UploadPage> {
       String thumbnailUrl = "";
       if (_isVideo) {
         String localThumb = await _generateAndUploadThumbnail(fileToUpload);
-        if(localThumb.isNotEmpty){
-          thumbnailUrl = localThumb;
-        } else {
-          thumbnailUrl = _isLongVideo ? url : _getCloudinaryThumbnail(url);
-          if(thumbnailUrl.isEmpty) thumbnailUrl = url;
-        }
+        thumbnailUrl = localThumb.isNotEmpty ? localThumb : (_isLongVideo ? url : _getCloudinaryThumbnail(url));
+        if(thumbnailUrl.isEmpty) thumbnailUrl = url;
       } else {
         thumbnailUrl = url;
       }
@@ -197,36 +180,21 @@ class _UploadPageState extends State<UploadPage> {
       String title=_titleCtrl.text.trim();
       DocumentReference docRef=FirebaseFirestore.instance.collection('posts').doc();
       String docId=docRef.id;
-
       await docRef.set({
-        'uid': FirebaseAuth.instance.currentUser!.uid,
-        'title': title, 'title_search': title.toLowerCase(), 'title_lower': title.toLowerCase(),
+        'uid': FirebaseAuth.instance.currentUser!.uid, 'title': title, 'title_search': title.toLowerCase(), 'title_lower': title.toLowerCase(),
         'description': _descCtrl.text.trim(), 'songName': _song, 'songUrl': _songUrl,
         'mediaUrl': url, 'videoUrl': url, 'imageUrl': url, 'thumbnail': thumbnailUrl,
         'isVideo': _isVideo, 'isLongVideo': _isLongVideo,
         'duration': _endValue>0? (_endValue - _startValue).toInt() : _previewCtrl?.value.duration.inSeconds?? 0,
         'durationText': _endValue>0? _fmt((_endValue - _startValue).toInt()) : (_previewCtrl!=null? _fmt(_previewCtrl!.value.duration.inSeconds) : "0:00"),
-        'username': FirebaseAuth.instance.currentUser!.displayName?? "User",
-        'userPhoto': FirebaseAuth.instance.currentUser!.photoURL?? "",
-        'createdAt': FieldValue.serverTimestamp(),
-        'timestamp': FieldValue.serverTimestamp(),
+        'username': FirebaseAuth.instance.currentUser!.displayName?? "User", 'userPhoto': FirebaseAuth.instance.currentUser!.photoURL?? "",
+        'createdAt': FieldValue.serverTimestamp(), 'timestamp': FieldValue.serverTimestamp(),
         'likes': [], 'views': 0, 'views_count': 0, 'viewsCount': 0, 'likes_count': 0, 'comments_count': 0,
-        'docId': docId, 'shareLink': "https://yuopni.com/video?id=$docId",
-        'type': _isVideo ? 'reel' : 'post',
+        'docId': docId, 'shareLink': "https://yuopni.com/video?id=$docId", 'type': _isVideo ? 'reel' : 'post',
       });
-
       try {
-        await Supabase.instance.client.from('posts').insert({
-          'uid': FirebaseAuth.instance.currentUser!.uid,
-          'caption': title,
-          'media_url': url,
-          'thumbnail': thumbnailUrl,
-          'type': _isVideo ? 'reel' : 'post',
-          'song_name': _song,
-          'is_long': _isLongVideo,
-        });
+        await Supabase.instance.client.from('posts').insert({'uid': FirebaseAuth.instance.currentUser!.uid, 'caption': title, 'media_url': url, 'thumbnail': thumbnailUrl, 'type': _isVideo ? 'reel' : 'post', 'song_name': _song, 'is_long': _isLongVideo});
       } catch(e) {}
-
       await _notif.cancel(0);
       try{ isUploadingGlobal.value=false; globalUploadProgress.value=0; }catch(e){}
       _audioPlayer.stop();
@@ -237,7 +205,8 @@ class _UploadPageState extends State<UploadPage> {
 
   @override void dispose(){ _previewCtrl?.dispose(); _audioPlayer.dispose(); _titleCtrl.dispose(); _descCtrl.dispose(); super.dispose(); }
 
-  @override Widget build(BuildContext context){
+  @override
+  Widget build(BuildContext context){
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(title: Text(_isLongVideo? "Long 90m ${_song!="No Song"?"+ $_song":""}" : "Upload ${_song!="No Song"?"- $_song":""}"), backgroundColor: Colors.black, foregroundColor: Colors.white),
@@ -247,6 +216,16 @@ class _UploadPageState extends State<UploadPage> {
         TextField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Title *", labelStyle: const TextStyle(color: Colors.white54), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)))),
         const SizedBox(height:12),
         SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.music_note, color: Colors.pink), label: Text(_song=="No Song"? "1000 Songs Me Se Add Karo" : "Song: $_song - Change Karo", style: const TextStyle(color: Colors.pink)), onPressed: _selectSong)),
+
+        const SizedBox(height:12),
+        // ---- NAYA AR BUTTON ----
+        SizedBox(width: double.infinity, child: OutlinedButton.icon(
+          icon: const Icon(Icons.face_retouching_natural, color: Colors.cyan),
+          label: const Text("AR Filter Camera 📸", style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
+          style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.cyan), padding: EdgeInsets.symmetric(vertical: 12)),
+          onPressed: (){ Navigator.push(context, MaterialPageRoute(builder: (_) => const ARFilterPage())); },
+        )),
+
         const SizedBox(height:12),
         Container(height: 220, width: double.infinity, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)), child: _file==null? const Icon(Icons.videocam, size:60, color: Colors.green) : _isVideo? (_previewCtrl?.value.isInitialized==true? Stack(alignment: Alignment.center, children:[ClipRRect(borderRadius: BorderRadius.circular(12), child: AspectRatio(aspectRatio: _previewCtrl!.value.aspectRatio, child: VideoPlayer(_previewCtrl!))), GestureDetector(onTap: (){ setState((){ _previewCtrl!.value.isPlaying? _previewCtrl!.pause() : _previewCtrl!.play(); }); }, child: Icon(_previewCtrl!.value.isPlaying? Icons.pause_circle : Icons.play_circle, size:50, color: Colors.white70))]) : Center(child: Text(_file!.path.split('/').last, style: const TextStyle(color: Colors.white70)))) : ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_file!, fit: BoxFit.cover, width: double.infinity))),
         const SizedBox(height:12),
