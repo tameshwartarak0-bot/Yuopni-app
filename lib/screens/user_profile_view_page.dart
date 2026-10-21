@@ -16,6 +16,7 @@ class _UserProfileViewPageState extends State<UserProfileViewPage> {
   bool isLoading = true;
   int friendsCount = 0;
   int postsCount = 0;
+  List<Map<String, dynamic>> userPosts = [];
 
   @override
   void initState() {
@@ -25,19 +26,17 @@ class _UserProfileViewPageState extends State<UserProfileViewPage> {
 
   Future<void> _loadData() async {
     var myUid = FirebaseAuth.instance.currentUser!.uid;
-    // User data
     var userSnap = await FirebaseFirestore.instance.collection('users').doc(widget.userId).get();
-    // Check friend
     var follow = await Supabase.instance.client.from('follows').select().eq('follower_uid', myUid).eq('following_uid', widget.userId).maybeSingle();
-    // Friends count of this user
     var friends = await Supabase.instance.client.from('follows').select().eq('follower_uid', widget.userId);
-    var posts = await FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: widget.userId).get();
+    var postsSnap = await FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: widget.userId).get();
 
     setState(() {
       userData = userSnap.data();
       isFriend = follow != null;
       friendsCount = (friends as List).length;
-      postsCount = posts.docs.length;
+      postsCount = postsSnap.docs.length;
+      userPosts = postsSnap.docs.map((e) => e.data() as Map<String, dynamic>).toList();
       isLoading = false;
     });
   }
@@ -53,52 +52,63 @@ class _UserProfileViewPageState extends State<UserProfileViewPage> {
     _loadData();
   }
 
+  void _showFriendsBottom() async {
+    var friendsData = await Supabase.instance.client.from('follows').select().eq('follower_uid', widget.userId);
+    showModalBottomSheet(context: context, backgroundColor: Colors.white, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))), builder: (_){
+      if ((friendsData as List).isEmpty) return const SizedBox(height: 200, child: Center(child: Text("No Friends Yet")));
+      return SizedBox(height: 400, child: Column(children: [const SizedBox(height: 10), Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))), const SizedBox(height: 10), Text("Friends ($friendsCount)", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)), Expanded(child: ListView.builder(itemCount: friendsData.length, itemBuilder: (_, i){
+        var f = friendsData[i];
+        return ListTile(leading: const CircleAvatar(child: Icon(Icons.person)), title: Text(f['following_uid'].toString().substring(0,6), style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: const Text("Yuopni User"));
+      }))]));
+    });
+  }
+
+  Widget _buildPostItem(Map<String, dynamic> data) {
+    String thumb = (data['thumbnail'] ?? '').toString();
+    String media = (data['mediaUrl'] ?? '').toString();
+    // Cloudinary thumbnail fix
+    String displayUrl = thumb.isNotEmpty ? thumb : media.replaceAll(".mp4", ".jpg").replaceFirst("/video/upload/", "/video/upload/so_0,w_400,h_700,c_fill/");
+    int views = (data['views'] ?? data['views_count'] ?? 0) is int ? (data['views'] ?? 0) : 0;
+
+    return Stack(fit: StackFit.expand, children: [
+      displayUrl.isNotEmpty ? CachedNetworkImage(imageUrl: displayUrl, fit: BoxFit.cover, placeholder: (_,__)=> Container(color: Colors.grey[300]), errorWidget: (_,__,___)=> Container(color: Colors.black, child: const Center(child: Icon(Icons.play_arrow, color: Colors.white)))) : Container(color: Colors.black),
+      Container(decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.topCenter, colors: [Colors.black54, Colors.transparent]))),
+      const Center(child: Icon(Icons.play_circle_fill, color: Colors.white, size: 28)),
+      Positioned(bottom: 4, left: 4, child: Row(children: [const Icon(Icons.visibility, color: Colors.white, size: 12), const SizedBox(width: 2), Text("$views", style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))])),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (isLoading) return const Scaffold(backgroundColor: Colors.black, body: Center(child: CircularProgressIndicator(color: Colors.white)));
+    if (isLoading) return const Scaffold(backgroundColor: Colors.white, body: Center(child: CircularProgressIndicator()));
     String name = userData?['username'] ?? userData?['name'] ?? "User";
     String photo = userData?['photoUrl'] ?? userData?['photo'] ?? "";
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(backgroundColor: Colors.black, title: Text(name, style: const TextStyle(color: Colors.white)), iconTheme: const IconThemeData(color: Colors.white)),
-      body: Column(
-        children: [
-          const SizedBox(height: 20),
-          CircleAvatar(radius: 45, backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null, backgroundColor: Colors.orange, child: photo.isEmpty ? Text(name[0].toUpperCase(), style: const TextStyle(fontSize: 35, color: Colors.white)) : null),
-          const SizedBox(height: 10),
-          Text(name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 10),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Column(children: [Text("$postsCount", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const Text("Posts", style: TextStyle(color: Colors.grey))]),
-            const SizedBox(width: 25),
-            GestureDetector(onTap: () { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("$name ke $friendsCount Friends"))); }, child: Column(children: [Text("$friendsCount", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const Text("Friends", style: TextStyle(color: Colors.grey))])),
-          ]),
-          const SizedBox(height: 15),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            ElevatedButton.icon(onPressed: _toggleFriend, icon: Icon(isFriend ? Icons.check : Icons.person_add), label: Text(isFriend ? "Friends" : "Add Friend"), style: ElevatedButton.styleFrom(backgroundColor: isFriend ? Colors.grey[300] : Colors.black, foregroundColor: isFriend ? Colors.black : Colors.white)),
-            const SizedBox(width: 10),
-            if (isFriend) // Message ka option sirf friend banne ke baad
-              ElevatedButton.icon(onPressed: () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Message Page Jaldi Ayega"))); }, icon: const Icon(Icons.message), label: const Text("Message"), style: ElevatedButton.styleFrom(backgroundColor: Colors.pink, foregroundColor: Colors.white)),
-          ]),
-          const SizedBox(height: 15),
-          const Divider(),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('posts').where('uid', isEqualTo: widget.userId).snapshots(),
-              builder: (c, snap) {
-                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-                if (snap.data!.docs.isEmpty) return const Center(child: Text("No Posts Yet"));
-                return GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 2, mainAxisSpacing: 2), itemCount: snap.data!.docs.length, itemBuilder: (_, i) {
-                  var d = snap.data!.docs[i].data() as Map<String, dynamic>;
-                  String thumb = d['thumbnail'] ?? d['mediaUrl'] ?? "";
-                  return CachedNetworkImage(imageUrl: thumb, fit: BoxFit.cover, errorWidget: (_, __, ___) => Container(color: Colors.black, child: const Icon(Icons.play_circle, color: Colors.white)));
-                });
-              },
-            ),
-          ),
-        ],
-      ),
+      appBar: AppBar(backgroundColor: Colors.black, title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), iconTheme: const IconThemeData(color: Colors.white)),
+      body: Column(children: [
+        const SizedBox(height: 20),
+        CircleAvatar(radius: 50, backgroundImage: photo.isNotEmpty ? NetworkImage(photo) : null, backgroundColor: Colors.orange),
+        const SizedBox(height: 12),
+        // FIX: Naam ab ubhra hua - Bold + Black + Shadow
+        Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.black, letterSpacing: 0.5, shadows: [Shadow(color: Colors.black26, offset: Offset(0, 1), blurRadius: 2)])),
+        const SizedBox(height: 12),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          GestureDetector(onTap: (){}, child: Column(children: [Text("$postsCount", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.black)), const Text("Posts", style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w600))])),
+          const SizedBox(width: 30),
+          GestureDetector(onTap: _showFriendsBottom, child: Column(children: [Text("$friendsCount", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: Colors.black)), const Text("Friends", style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w600))])),
+        ]),
+        const SizedBox(height: 18),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          ElevatedButton.icon(onPressed: _toggleFriend, icon: Icon(isFriend ? Icons.check : Icons.person_add, size: 18), label: Text(isFriend ? "Friends" : "Add Friend"), style: ElevatedButton.styleFrom(backgroundColor: isFriend ? Colors.grey[300] : Colors.black, foregroundColor: isFriend ? Colors.black : Colors.white, padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)))),
+          const SizedBox(width: 12),
+          if (isFriend) ElevatedButton.icon(onPressed: (){}, icon: const Icon(Icons.message, size: 18), label: const Text("Message"), style: ElevatedButton.styleFrom(backgroundColor: Colors.pink, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)))),
+        ]),
+        const SizedBox(height: 15),
+        const Divider(height: 1),
+        Expanded(child: userPosts.isEmpty ? const Center(child: Text("No Posts Yet", style: TextStyle(color: Colors.grey))) : GridView.builder(gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 1, mainAxisSpacing: 1), itemCount: userPosts.length, itemBuilder: (_, i) => _buildPostItem(userPosts[i]))),
+      ]),
     );
   }
 }
