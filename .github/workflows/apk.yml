@@ -18,8 +18,9 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.29.3'
+          flutter-version: '3.32.0'
           channel: 'stable'
+          cache: true
 
       - name: Decode Keystore
         run: |
@@ -29,7 +30,6 @@ jobs:
           fi
           base64 --decode android/app/keystore.b64 > android/app/upload-keystore.jks
           ls -lh android/app/*.jks
-          echo "Keystore size: $(wc -c < android/app/upload-keystore.jks) bytes"
 
       - name: Create key.properties
         run: |
@@ -37,7 +37,6 @@ jobs:
           echo "storePassword=yuopni123" >> android/app/key.properties
           echo "keyPassword=yuopni123" >> android/app/key.properties
           echo "keyAlias=yuopni" >> android/app/key.properties
-          cat android/app/key.properties
           cp android/app/key.properties android/key.properties
 
       - run: flutter pub get
@@ -46,7 +45,6 @@ jobs:
       - name: Verify APK Signature
         run: |
           ls -lh build/app/outputs/flutter-apk/
-          # FIX: split-per-abi me app-release.apk nahi banta, isliye jo bane hain unko hi verify karo
           for apk in build/app/outputs/flutter-apk/*-release.apk; do
             echo "Verifying $apk"
             $ANDROID_HOME/build-tools/34.0.0/apksigner verify --verbose "$apk"
@@ -58,6 +56,7 @@ jobs:
           name: yuopni-apk-${{ github.run_number }}
           path: |
             build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            build/app/outputs/flutter-apk/app-x86_64-release.apk
           compression-level: 6
           retention-days: 7
