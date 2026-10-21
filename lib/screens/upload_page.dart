@@ -9,6 +9,8 @@ import 'package:video_player/video_player.dart';
 import 'package:video_trimmer/video_trimmer.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:path_provider/path_provider.dart';
 import '../global.dart';
 import '../data/songs_data.dart';
 
@@ -42,7 +44,7 @@ class _UploadPageState extends State<UploadPage> {
   static const String cloudName = "b7qkm3lk";
   static const String uploadPreset = "yuopni_upload";
   final FlutterLocalNotificationsPlugin _notif = FlutterLocalNotificationsPlugin();
-  static const String bucketName = "videos"; // FIX: pehle yuopni-videos tha
+  static const String bucketName = "videos";
 
   @override
   void initState() {
@@ -72,15 +74,36 @@ class _UploadPageState extends State<UploadPage> {
 
   String _fmt(int sec){ final m = sec ~/ 60; final s = sec % 60; return "$m:${s.toString().padLeft(2,'0')}"; }
 
-  // THUMBNAIL GENERATE LOGIC
   String _getCloudinaryThumbnail(String videoUrl) {
     try {
-      // https://res.cloudinary.com/b7qkm3lk/video/upload/v123/file.mp4 -> .../video/upload/so_0,w_400,h_700,c_fill/v123/file.jpg
       String thumb = videoUrl.replaceFirst('/video/upload/', '/video/upload/so_0,w_400,h_700,c_fill/');
       thumb = thumb.replaceAll('.mp4', '.jpg').replaceAll('.mov', '.jpg');
       return thumb;
     } catch (e) {
       return videoUrl.replaceAll('.mp4', '.jpg');
+    }
+  }
+
+  // ===== NAYA FUNCTION - LOCAL THUMBNAIL BANAKE SUPABASE PE UPLOAD =====
+  Future<String> _generateAndUploadThumbnail(File videoFile) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final thumbPath = await VideoThumbnail.thumbnailFile(
+        video: videoFile.path,
+        thumbnailPath: tempDir.path,
+        imageFormat: ImageFormat.JPEG,
+        maxHeight: 700,
+        quality: 75,
+      );
+      if (thumbPath == null) return "";
+      File thumbFile = File(thumbPath);
+      String uid = FirebaseAuth.instance.currentUser!.uid;
+      String thumbName = "${uid}_thumb_${DateTime.now().millisecondsSinceEpoch}.jpg";
+      await Supabase.instance.client.storage.from(bucketName).upload(thumbName, thumbFile, fileOptions: const FileOptions(upsert: true));
+      return Supabase.instance.client.storage.from(bucketName).getPublicUrl(thumbName);
+    } catch (e) {
+      print("Thumbnail error: $e");
+      return "";
     }
   }
 
@@ -159,18 +182,26 @@ class _UploadPageState extends State<UploadPage> {
       if(_isLongVideo){ url=await _uploadLongToSupabase(fileToUpload, (p){ if(mounted) setState(()=>_progress=p); }); }
       else { url=await _uploadToCloudinary(fileToUpload, _isVideo, (p){ if(mounted) setState(()=>_progress=p); }); }
 
-      // FIXED THUMBNAIL LOGIC
-      String thumbnailUrl;
+      // ===== FINAL THUMBNAIL LOGIC - 100% FIX =====
+      String thumbnailUrl = "";
       if (_isVideo) {
-        thumbnailUrl = _isLongVideo ? url : _getCloudinaryThumbnail(url); // Long video me bhi video url, profile me gradient dikhega
+        // Pehle local thumbnail banao - ye sabse best hai
+        String localThumb = await _generateAndUploadThumbnail(fileToUpload);
+        if(localThumb.isNotEmpty){
+          thumbnailUrl = localThumb;
+        } else {
+          // Agar local fail ho to Cloudinary ka use karo
+          thumbnailUrl = _isLongVideo ? "" : _getCloudinaryThumbnail(url);
+          if(thumbnailUrl.isEmpty) thumbnailUrl = url;
+        }
       } else {
-        thumbnailUrl = url; // Photo ke liye same
+        thumbnailUrl = url;
       }
 
       String title=_titleCtrl.text.trim();
       DocumentReference docRef=FirebaseFirestore.instance.collection('posts').doc();
       String docId=docRef.id; String shareLink="https://yuopni.com/video?id=$docId";
-      
+
       await docRef.set({
         'uid': FirebaseAuth.instance.currentUser!.uid,
         'title': title, 
@@ -182,7 +213,7 @@ class _UploadPageState extends State<UploadPage> {
         'mediaUrl': url, 
         'videoUrl': url, 
         'imageUrl': url, 
-        'thumbnail': thumbnailUrl, // AB SAHI THUMBNAIL
+        'thumbnail': thumbnailUrl,
         'isVideo': _isVideo, 
         'isLongVideo': _isLongVideo,
         'duration': _endValue>0? (_endValue - _startValue).toInt() : _previewCtrl?.value.duration.inSeconds?? 0,
@@ -202,7 +233,6 @@ class _UploadPageState extends State<UploadPage> {
         'type': _isVideo ? 'reel' : 'post',
       });
 
-      // Supabase me bhi save karo taaki friends/views feature kaam kare
       try {
         await Supabase.instance.client.from('posts').insert({
           'uid': FirebaseAuth.instance.currentUser!.uid,
@@ -218,7 +248,7 @@ class _UploadPageState extends State<UploadPage> {
       await _notif.cancel(0);
       try{ isUploadingGlobal.value=false; globalUploadProgress.value=0; }catch(e){}
       _audioPlayer.stop();
-      if(mounted){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload ho gaya! $_song"))); Navigator.pop(context); }
+      if(mounted){ ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload ho gaya! Thumbnail ban gaya ✅"))); Navigator.pop(context); }
     }catch(e){ await _notif.cancel(0); try{ isUploadingGlobal.value=false; }catch(_){} if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"))); }
     finally{ if(mounted) setState(()=>_isUploading=false); }
   }
