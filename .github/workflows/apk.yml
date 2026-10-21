@@ -18,7 +18,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.0'
+          flutter-version: '3.35.4'
           channel: 'stable'
           cache: true
 
@@ -30,6 +30,7 @@ jobs:
           fi
           base64 --decode android/app/keystore.b64 > android/app/upload-keystore.jks
           ls -lh android/app/*.jks
+          echo "Keystore size: $(wc -c < android/app/upload-keystore.jks) bytes"
 
       - name: Create key.properties
         run: |
@@ -37,6 +38,7 @@ jobs:
           echo "storePassword=yuopni123" >> android/app/key.properties
           echo "keyPassword=yuopni123" >> android/app/key.properties
           echo "keyAlias=yuopni" >> android/app/key.properties
+          cat android/app/key.properties
           cp android/app/key.properties android/key.properties
 
       - run: flutter pub get
