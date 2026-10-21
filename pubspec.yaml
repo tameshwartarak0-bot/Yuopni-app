@@ -36,7 +36,7 @@ dependencies:
   visibility_detector: ^0.4.0+2
   video_thumbnail: ^0.5.3
   path_provider: ^2.1.2
-  flutter_deepar: ^0.6.4
+  flutter_deepar: ^0.1.11
 
 dev_dependencies:
   flutter_test:
