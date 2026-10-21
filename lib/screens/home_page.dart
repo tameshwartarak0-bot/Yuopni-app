@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:video_player/video_player.dart';
+import 'package:cached_video_player/cached_video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../global.dart';
 import 'reel_page.dart';
-import 'main_screen.dart'; // FIX: pause ke liye
+import 'main_screen.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -43,7 +43,7 @@ class HomePage extends StatelessWidget {
           ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('posts').orderBy('createdAt', descending: true).snapshots(),
+              stream: FirebaseFirestore.instance.collection('posts').orderBy('createdAt', descending: true).limit(20).snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.white));
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.white)));
@@ -56,7 +56,7 @@ class HomePage extends StatelessWidget {
                     String thumbUrl = (data['thumbnail']?? mediaUrl).toString();
                     bool isVideo = data['isVideo'] == true || mediaUrl.toLowerCase().contains(".mp4");
                     String title = (data['title']?? data['caption']?? '').toString();
-                    String userId = (data['userId'] ?? data['uid'] ?? data['userID'] ?? '').toString();
+                    String userId = (data['userId'] ?? data['uid'] ?? '').toString();
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -67,36 +67,23 @@ class HomePage extends StatelessWidget {
                           builder: (context, userSnap) {
                             String displayName = 'User';
                             String photoUrl = (data['userPhoto']?? '').toString();
-
                             if (userSnap != null && userSnap.hasData && userSnap.data!.exists) {
                               var uData = userSnap.data!.data() as Map<String, dynamic>?;
-                              // FINAL: sirf edited username lo, gmail naam kabhi nahi
-                              displayName = (uData?['username'] ?? uData?['name'] ?? uData?['displayName'] ?? 'User').toString();
-                              photoUrl = (uData?['photoUrl'] ?? uData?['photo'] ?? uData?['userPhoto'] ?? photoUrl).toString();
+                              displayName = (uData?['username'] ?? 'User').toString();
+                              photoUrl = (uData?['photoUrl'] ?? photoUrl).toString();
                             } else {
-                              // Agar users doc nahi hai to bhi gmail naam filter karo
                               String raw = (data['username'] ?? 'User').toString();
-                              if (raw.contains('@') || raw.toLowerCase().contains('tameshwar') || raw.toLowerCase().contains('gmail')) {
-                                displayName = (data['userId'] ?? 'User').toString().substring(0,6); // fallback
-                                if(displayName.length > 15) displayName = 'User';
-                              } else {
-                                displayName = raw;
-                              }
+                              displayName = raw.contains('@') ? 'User' : raw;
                             }
-
                             return ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: Colors.grey[800],
-                                backgroundImage: photoUrl.isNotEmpty && photoUrl.startsWith('http') ? NetworkImage(photoUrl) : null,
-                                child: photoUrl.isEmpty || !photoUrl.startsWith('http') ? Text(displayName.isNotEmpty ? displayName[0].toUpperCase() : 'U', style: const TextStyle(color: Colors.white)) : null
-                              ),
+                              leading: CircleAvatar(backgroundColor: Colors.grey[800], backgroundImage: photoUrl.startsWith('http') ? NetworkImage(photoUrl) : null),
                               title: Text(displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                               subtitle: Text(title, style: const TextStyle(color: Colors.white70, fontSize: 12), maxLines: 2),
                             );
                           }
                         ),
                         if (isVideo)
-                          AutoPlayVideoCard(videoUrl: mediaUrl, thumbUrl: thumbUrl, docs: docs, index: i)
+                          AutoPlayVideoCard(videoUrl: mediaUrl, thumbUrl: thumbUrl, docs: docs, index: i, docId: docs[i].id)
                         else
                           CachedNetworkImage(imageUrl: mediaUrl, width: double.infinity, height: 420, fit: BoxFit.cover),
                       ]),
@@ -113,28 +100,48 @@ class HomePage extends StatelessWidget {
 }
 
 class AutoPlayVideoCard extends StatefulWidget {
-  final String videoUrl, thumbUrl;
+  final String videoUrl, thumbUrl, docId;
   final List<QueryDocumentSnapshot> docs;
   final int index;
-  const AutoPlayVideoCard({super.key, required this.videoUrl, required this.thumbUrl, required this.docs, required this.index});
-  @override
-  State<AutoPlayVideoCard> createState() => _AutoPlayVideoCardState();
+  const AutoPlayVideoCard({super.key, required this.videoUrl, required this.thumbUrl, required this.docs, required this.index, required this.docId});
+  @override State<AutoPlayVideoCard> createState() => _AutoPlayVideoCardState();
 }
 
 class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
-  VideoPlayerController? _controller;
+  CachedVideoPlayerController? _controller;
   bool _initialized = false;
+  bool _isError = false;
 
   @override
   void initState() {
     super.initState();
+    // FIX: Login ke baad pause ko false kar do
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if(pauseReelsNotifier.value){
+        pauseReelsNotifier.value = false;
+      }
+    });
     pauseReelsNotifier.addListener(_handleGlobalPause);
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
-     ..initialize().then((_) {
-        _controller!.setLooping(true);
-        _controller!.setVolume(1);
-        if (mounted) setState(() => _initialized = true);
-      });
+    _initVideo();
+  }
+
+  Future<void> _initVideo() async {
+    try{
+      // FIX: Cached controller - 259KB/s ki jagah 25KB/s
+      _controller = CachedVideoPlayerController.network(
+        widget.videoUrl,
+        cacheKey: widget.docId,
+      );
+      await _controller!.initialize();
+      _controller!.setLooping(true);
+      _controller!.setVolume(0); // Home pe mute rakho - data + UX sahi
+      if(mounted){
+        setState(()=> _initialized = true);
+      }
+    }catch(e){
+      if(mounted) setState(()=> _isError = true);
+      debugPrint("Video init error ${widget.videoUrl} $e");
+    }
   }
 
   void _handleGlobalPause() {
@@ -147,7 +154,6 @@ class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
   @override
   void dispose() {
     pauseReelsNotifier.removeListener(_handleGlobalPause);
-    _controller?.pause();
     _controller?.dispose();
     super.dispose();
   }
@@ -155,14 +161,15 @@ class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
   @override
   Widget build(BuildContext context) {
     return VisibilityDetector(
-      key: Key(widget.videoUrl),
+      key: Key(widget.docId),
       onVisibilityChanged: (info) {
-        if (!_initialized) return;
+        if (!_initialized || _controller == null) return;
         if (pauseReelsNotifier.value) {
           _controller!.pause();
           return;
         }
-        if (info.visibleFraction > 0.7) {
+        // 60% dikhe tabhi play - pehle 70% tha isliye kabhi play hi nahi hota tha
+        if (info.visibleFraction > 0.6) {
           _controller!.play();
         } else {
           _controller!.pause();
@@ -170,13 +177,21 @@ class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
       },
       child: InkWell(
         onTap: () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(myReels: widget.docs, initialIndex: widget.index)));
+          // Tap pe pause karo aur reel pe jao
+          _controller?.pause();
+          pauseReelsNotifier.value = true;
+          Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(myReels: widget.docs, initialIndex: widget.index))).then((_){
+            pauseReelsNotifier.value = false;
+          });
         },
-        child: _initialized
-           ? AspectRatio(aspectRatio: _controller!.value.aspectRatio, child: VideoPlayer(_controller!))
-            : Stack(alignment: Alignment.center, children: [
-                CachedNetworkImage(imageUrl: widget.thumbUrl, width: double.infinity, height: 420, fit: BoxFit.cover),
-                const CircularProgressIndicator(color: Colors.white),
+        child: _isError
+          ? Container(height: 420, color: Colors.black, child: Icon(Icons.broken_image, color: Colors.white24))
+          : _initialized
+           ? AspectRatio(aspectRatio: _controller!.value.aspectRatio, child: CachedVideoPlayer(_controller!))
+           : Stack(alignment: Alignment.center, children: [
+                CachedNetworkImage(imageUrl: widget.thumbUrl, width: double.infinity, height: 420, fit: BoxFit.cover, errorWidget: (_,__,___)=> Container(height: 420, color: Colors.grey[900])),
+                const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                const Positioned(bottom: 10, right: 10, child: Icon(Icons.play_circle_fill, color: Colors.white70, size: 30))
               ]),
       ),
     );
