@@ -11,9 +11,10 @@ import 'package:just_audio/just_audio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:video_compress/video_compress.dart';
 import '../global.dart';
 import '../data/songs_data.dart';
-import 'ar_filter_page.dart'; // AR Page import
+import 'ar_filter_page.dart';
 
 class UploadPage extends StatefulWidget {
   final File? prefile;
@@ -32,6 +33,7 @@ class _UploadPageState extends State<UploadPage> {
   bool _isVideo = false;
   bool _isLongVideo = false;
   bool _isUploading = false;
+  bool _isCompressing = false;
   double _progress = 0;
   VideoPlayerController? _previewCtrl;
   String _song = "No Song";
@@ -67,37 +69,35 @@ class _UploadPageState extends State<UploadPage> {
     await _notif.initialize(const InitializationSettings(android: android));
   }
 
-  Future<void> _updateNotif(double p) async {
-    if (p < 0) p = 0;
-    if (p > 100) p = 100;
+  Future<void> _updateNotif(double p, String msg) async {
+    if (p < 0) p = 0; if (p > 100) p = 100;
     try { globalUploadProgress.value = p; isUploadingGlobal.value = p < 100; } catch(e){}
-    await _notif.show(0, 'Yuopni Upload - ${p.toStringAsFixed(0)}%', p < 100? '${p.toStringAsFixed(0)}% $_song' : 'Upload Complete!', NotificationDetails(android: AndroidNotificationDetails('yuopni_upload','Yuopni Uploads', importance: Importance.low, ongoing: p < 100, autoCancel: p >= 100, showProgress: true, maxProgress: 100, progress: p.toInt(), onlyAlertOnce: true)));
+    await _notif.show(0, 'Yuopni - ${p.toStringAsFixed(0)}% $msg', msg, NotificationDetails(android: AndroidNotificationDetails('yuopni_upload','Yuopni Uploads', importance: Importance.low, ongoing: p < 100, autoCancel: p >= 100, showProgress: true, maxProgress: 100, progress: p.toInt(), onlyAlertOnce: true)));
+  }
+
+  // YAHI MAIN FIX HAI - COMPRESSION
+  Future<File> _compressVideo(File file) async {
+    setState(()=> _isCompressing = true);
+    await _updateNotif(5, "Compressing video...");
+    try {
+      final info = await VideoCompress.compressVideo(
+        file.path,
+        quality: VideoQuality.MediumQuality, // 720p ~ 2-3Mbps - Insta/Snap jaisa
+        deleteOrigin: false,
+        includeAudio: true,
+      );
+      if(info!=null && info.path!=null){
+        File compressed = File(info.path!);
+        debugPrint("Original: ${file.lengthSync()/1024/1024}MB -> Compressed: ${compressed.lengthSync()/1024/1024}MB");
+        setState(()=> _isCompressing = false);
+        return compressed;
+      }
+    } catch(e){ debugPrint("Compress error $e"); }
+    setState(()=> _isCompressing = false);
+    return file;
   }
 
   String _fmt(int sec){ final m = sec ~/ 60; final s = sec % 60; return "$m:${s.toString().padLeft(2,'0')}"; }
-
-  String _getCloudinaryThumbnail(String videoUrl) {
-    try {
-      String thumb = videoUrl.replaceFirst('/video/upload/', '/video/upload/so_0,w_400,h_700,c_fill/');
-      thumb = thumb.replaceAll('.mp4', '.jpg').replaceAll('.mov', '.jpg');
-      return thumb;
-    } catch (e) {
-      return videoUrl.replaceAll('.mp4', '.jpg');
-    }
-  }
-
-  Future<String> _generateAndUploadThumbnail(File videoFile) async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final thumbPath = await VideoThumbnail.thumbnailFile(video: videoFile.path, thumbnailPath: tempDir.path, imageFormat: ImageFormat.JPEG, maxHeight: 700, quality: 75);
-      if (thumbPath == null) return "";
-      File thumbFile = File(thumbPath);
-      String uid = FirebaseAuth.instance.currentUser!.uid;
-      String thumbName = "${uid}_thumb_${DateTime.now().millisecondsSinceEpoch}.jpg";
-      await Supabase.instance.client.storage.from(bucketName).upload(thumbName, thumbFile, fileOptions: const FileOptions(upsert: true));
-      return Supabase.instance.client.storage.from(bucketName).getPublicUrl(thumbName);
-    } catch (e) { return ""; }
-  }
 
   Future<void> _loadVideo(File file) async {
     await _trimmer.loadVideo(videoFile: file);
@@ -136,8 +136,13 @@ class _UploadPageState extends State<UploadPage> {
 
   Future<String> _uploadToCloudinary(File file, bool isVideo, Function(double) onProgress) async {
     dio.Dio dioClient = dio.Dio();
-    dio.FormData formData = dio.FormData.fromMap({'upload_preset': uploadPreset, 'file': await dio.MultipartFile.fromFile(file.path)});
-    var res = await dioClient.post("https://api.cloudinary.com/v1_1/$cloudName/${isVideo? "video" : "image"}/upload", data: formData, onSendProgress: (s,t){ if(t!=0){ double p=s/t*100; onProgress(p); _updateNotif(p); } });
+    dio.FormData formData = dio.FormData.fromMap({
+      'upload_preset': uploadPreset, 
+      'file': await dio.MultipartFile.fromFile(file.path),
+      'eager': 'q_auto:good,f_auto,w_720', // Cloudinary bhi auto compress karega
+      'eager_async': 'true',
+    });
+    var res = await dioClient.post("https://api.cloudinary.com/v1_1/$cloudName/${isVideo? "video" : "image"}/upload", data: formData, onSendProgress: (s,t){ if(t!=0){ double p=s/t*100; onProgress(p); _updateNotif(p, "Uploading..."); } });
     return res.data['secure_url'];
   }
 
@@ -145,11 +150,11 @@ class _UploadPageState extends State<UploadPage> {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final name = "${uid}_${DateTime.now().millisecondsSinceEpoch}.mp4";
     final supa = Supabase.instance.client;
-    onProgress(10); await _updateNotif(10);
+    onProgress(10); await _updateNotif(10, "Uploading long...");
     await supa.storage.from(bucketName).upload(name, file, fileOptions: const FileOptions(cacheControl: '3600', upsert: false));
-    onProgress(90); await _updateNotif(90);
+    onProgress(90); await _updateNotif(90, "Finalizing...");
     final url = supa.storage.from(bucketName).getPublicUrl(name);
-    onProgress(100); await _updateNotif(100);
+    onProgress(100); await _updateNotif(100, "Done");
     return url;
   }
 
@@ -157,79 +162,63 @@ class _UploadPageState extends State<UploadPage> {
     if (_file == null || _titleCtrl.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Title aur file dono chahiye"))); return; }
     setState((){ _isUploading=true; _progress=0; });
     try{ isUploadingGlobal.value=true; }catch(e){}
-    await _updateNotif(0);
+    await _updateNotif(0, "Starting...");
     try{
       File fileToUpload = _file!;
       if(_showTrimmer && _isVideo &&!_isLongVideo && _endValue > _startValue){
         await _trimmer.saveTrimmedVideo(startValue: _startValue, endValue: _endValue, onSave: (path){ if(path!=null && path.isNotEmpty) fileToUpload = File(path); });
         await Future.delayed(const Duration(milliseconds: 800));
       }
+      // COMPRESSION YAHAN HOGA
+      if(_isVideo){
+        fileToUpload = await _compressVideo(fileToUpload);
+      }
+
       String url;
       if(_isLongVideo){ url=await _uploadLongToSupabase(fileToUpload, (p){ if(mounted) setState(()=>_progress=p); }); }
       else { url=await _uploadToCloudinary(fileToUpload, _isVideo, (p){ if(mounted) setState(()=>_progress=p); }); }
 
-      String thumbnailUrl = "";
-      if (_isVideo) {
-        String localThumb = await _generateAndUploadThumbnail(fileToUpload);
-        thumbnailUrl = localThumb.isNotEmpty ? localThumb : (_isLongVideo ? url : _getCloudinaryThumbnail(url));
-        if(thumbnailUrl.isEmpty) thumbnailUrl = url;
-      } else {
-        thumbnailUrl = url;
-      }
-
-      String title=_titleCtrl.text.trim();
+      String thumbnailUrl = url;
       DocumentReference docRef=FirebaseFirestore.instance.collection('posts').doc();
       String docId=docRef.id;
       await docRef.set({
-        'uid': FirebaseAuth.instance.currentUser!.uid, 'title': title, 'title_search': title.toLowerCase(), 'title_lower': title.toLowerCase(),
+        'uid': FirebaseAuth.instance.currentUser!.uid, 'title': _titleCtrl.text.trim(), 'title_search': _titleCtrl.text.trim().toLowerCase(), 'title_lower': _titleCtrl.text.trim().toLowerCase(),
         'description': _descCtrl.text.trim(), 'songName': _song, 'songUrl': _songUrl,
         'mediaUrl': url, 'videoUrl': url, 'imageUrl': url, 'thumbnail': thumbnailUrl,
         'isVideo': _isVideo, 'isLongVideo': _isLongVideo,
         'duration': _endValue>0? (_endValue - _startValue).toInt() : _previewCtrl?.value.duration.inSeconds?? 0,
-        'durationText': _endValue>0? _fmt((_endValue - _startValue).toInt()) : (_previewCtrl!=null? _fmt(_previewCtrl!.value.duration.inSeconds) : "0:00"),
         'username': FirebaseAuth.instance.currentUser!.displayName?? "User", 'userPhoto': FirebaseAuth.instance.currentUser!.photoURL?? "",
         'createdAt': FieldValue.serverTimestamp(), 'timestamp': FieldValue.serverTimestamp(),
         'likes': [], 'views': 0, 'views_count': 0, 'viewsCount': 0, 'likes_count': 0, 'comments_count': 0,
         'docId': docId, 'shareLink': "https://yuopni.com/video?id=$docId", 'type': _isVideo ? 'reel' : 'post',
+        'compressed': true, 'quality': '720p',
       });
-      try {
-        await Supabase.instance.client.from('posts').insert({'uid': FirebaseAuth.instance.currentUser!.uid, 'caption': title, 'media_url': url, 'thumbnail': thumbnailUrl, 'type': _isVideo ? 'reel' : 'post', 'song_name': _song, 'is_long': _isLongVideo});
-      } catch(e) {}
+
       await _notif.cancel(0);
       try{ isUploadingGlobal.value=false; globalUploadProgress.value=0; }catch(e){}
       _audioPlayer.stop();
-      if(mounted){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload ho gaya! ✅"))); Navigator.pop(context); }
+      if(mounted){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload ho gaya! ✅ 70% data bacha"))); Navigator.pop(context); }
     }catch(e){ await _notif.cancel(0); try{ isUploadingGlobal.value=false; }catch(_){} if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"))); }
     finally{ if(mounted) setState(()=>_isUploading=false); }
   }
 
-  @override void dispose(){ _previewCtrl?.dispose(); _audioPlayer.dispose(); _titleCtrl.dispose(); _descCtrl.dispose(); super.dispose(); }
+  @override void dispose(){ _previewCtrl?.dispose(); _audioPlayer.dispose(); _titleCtrl.dispose(); _descCtrl.dispose(); VideoCompress.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context){
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(title: Text(_isLongVideo? "Long 90m ${_song!="No Song"?"+ $_song":""}" : "Upload ${_song!="No Song"?"- $_song":""}"), backgroundColor: Colors.black, foregroundColor: Colors.white),
+      appBar: AppBar(title: Text(_isLongVideo? "Long 90m" : "Upload"), backgroundColor: Colors.black, foregroundColor: Colors.white),
       body: SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(children:[
-        if(_song!="No Song") Container(width:double.infinity, padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.pink.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.pink)), child: Row(children:[const Icon(Icons.music_note, color: Colors.pink, size:16), const SizedBox(width:6), Expanded(child: Text("$_song selected", style: const TextStyle(color: Colors.pink, fontWeight: FontWeight.bold))), IconButton(icon: const Icon(Icons.close, color: Colors.pink, size: 16), onPressed: ()=> setState(()=> _song="No Song"))])),
-        const SizedBox(height:12),
         TextField(controller: _titleCtrl, style: const TextStyle(color: Colors.white), decoration: InputDecoration(labelText: "Title *", labelStyle: const TextStyle(color: Colors.white54), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)))),
         const SizedBox(height:12),
-        SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.music_note, color: Colors.pink), label: Text(_song=="No Song"? "1000 Songs Me Se Add Karo" : "Song: $_song - Change Karo", style: const TextStyle(color: Colors.pink)), onPressed: _selectSong)),
-
+        SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.music_note, color: Colors.pink), label: Text(_song=="No Song"? "1000 Songs Me Se Add Karo" : "Song: $_song", style: const TextStyle(color: Colors.pink)), onPressed: _selectSong)),
         const SizedBox(height:12),
-        // ---- NAYA AR BUTTON ----
-        SizedBox(width: double.infinity, child: OutlinedButton.icon(
-          icon: const Icon(Icons.face_retouching_natural, color: Colors.cyan),
-          label: const Text("AR Filter Camera 📸", style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
-          style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.cyan), padding: EdgeInsets.symmetric(vertical: 12)),
-          onPressed: (){ Navigator.push(context, MaterialPageRoute(builder: (_) => const ARFilterPage())); },
-        )),
-
+        SizedBox(width: double.infinity, child: OutlinedButton.icon(icon: const Icon(Icons.face_retouching_natural, color: Colors.cyan), label: const Text("AR Filter Camera 📸", style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)), style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.cyan)), onPressed: (){ Navigator.push(context, MaterialPageRoute(builder: (_) => const ARFilterPage())); })),
         const SizedBox(height:12),
         Container(height: 220, width: double.infinity, decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(12)), child: _file==null? const Icon(Icons.videocam, size:60, color: Colors.green) : _isVideo? (_previewCtrl?.value.isInitialized==true? Stack(alignment: Alignment.center, children:[ClipRRect(borderRadius: BorderRadius.circular(12), child: AspectRatio(aspectRatio: _previewCtrl!.value.aspectRatio, child: VideoPlayer(_previewCtrl!))), GestureDetector(onTap: (){ setState((){ _previewCtrl!.value.isPlaying? _previewCtrl!.pause() : _previewCtrl!.play(); }); }, child: Icon(_previewCtrl!.value.isPlaying? Icons.pause_circle : Icons.play_circle, size:50, color: Colors.white70))]) : Center(child: Text(_file!.path.split('/').last, style: const TextStyle(color: Colors.white70)))) : ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_file!, fit: BoxFit.cover, width: double.infinity))),
         const SizedBox(height:12),
-        if(_showTrimmer) Column(children: [const Text("30 Sec Trimmer - drag karke kaato", style: TextStyle(color: Colors.white, fontSize: 12)), const SizedBox(height: 8), TrimViewer(trimmer: _trimmer, viewerHeight: 50, viewerWidth: MediaQuery.of(context).size.width - 32, maxVideoLength: const Duration(seconds: 30), onChangeStart: (v)=> _startValue=v, onChangeEnd: (v)=> _endValue=v, onChangePlaybackState: (playing){ if(playing) _previewCtrl?.play(); else _previewCtrl?.pause(); }), Text("${_startValue.toStringAsFixed(1)}s - ${_endValue.toStringAsFixed(1)}s (Max 30s)", style: const TextStyle(color: Colors.white70, fontSize: 11)), const SizedBox(height: 12)]),
+        if(_isCompressing) Column(children:[LinearProgressIndicator(color: Colors.cyan), SizedBox(height:8), Text("Video ko compress kar rahe hai... 70% data bachega", style: TextStyle(color: Colors.cyan))]),
         Row(children:[
           Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickImage, child: const Text("Photo"))),
           const SizedBox(width:6),
@@ -238,7 +227,7 @@ class _UploadPageState extends State<UploadPage> {
           Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickLongVideo, style: OutlinedButton.styleFrom(foregroundColor: Colors.red), child: const Text("Long 90m"))),
         ]),
         const SizedBox(height:20),
-        if(_isUploading) Column(children:[LinearProgressIndicator(value: _progress/100, minHeight: 8, color: _isLongVideo?Colors.red:Colors.green, backgroundColor: Colors.white24), const SizedBox(height:10), Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai... $_song", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
+        if(_isUploading) Column(children:[LinearProgressIndicator(value: _progress/100, minHeight: 8, color: _isLongVideo?Colors.red:Colors.green, backgroundColor: Colors.white24), const SizedBox(height:10), Text("${_progress.toStringAsFixed(0)}% Upload ho raha hai...", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
         const SizedBox(height:10),
         SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _isUploading?null:_upload, style: ElevatedButton.styleFrom(backgroundColor: _isLongVideo?Colors.red:Colors.white, foregroundColor: _isLongVideo?Colors.white:Colors.black, padding: const EdgeInsets.symmetric(vertical:14)), child: Text(_isUploading? "${_progress.toStringAsFixed(0)}%..." : "Upload Karo"))),
       ])),
