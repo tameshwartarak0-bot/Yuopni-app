@@ -2,8 +2,10 @@ name: yuopni
 description: Yuopni - Short Videos & Photos
 publish_to: 'none'
 version: 1.0.5+7
+
 environment:
-  sdk: '>=3.10.0 <4.0.0'
+  sdk: '>=3.6.0 <4.0.0'
+
 dependencies:
   flutter:
     sdk: flutter
@@ -35,7 +37,6 @@ dependencies:
   path_provider: ^2.1.2
   flutter_deepar: ^0.1.11
   video_compress: ^3.1.4
-  cached_video_player: ^2.0.4
   better_player_enhanced: ^1.0.3
   flutter_cache_manager: ^3.3.2
 
