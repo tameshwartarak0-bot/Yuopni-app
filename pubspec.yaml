@@ -37,8 +37,8 @@ dependencies:
   path_provider: ^2.1.2
   flutter_deepar: ^0.1.11
   video_compress: ^3.1.4
-  better_player_enhanced: ^1.0.3
   flutter_cache_manager: ^3.3.2
+  cached_video_player_plus: ^4.1.0
 
 dependency_overrides:
   meta: ^1.17.0
