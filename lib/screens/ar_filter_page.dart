@@ -1,17 +1,15 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:deepar_flutter/deepar_flutter.dart';
+import 'package:flutter_deepar/flutter_deepar.dart';
 
 class ARFilterPage extends StatefulWidget {
   const ARFilterPage({super.key});
-  @override
-  State<ARFilterPage> createState() => _ARFilterPageState();
+  @override State<ARFilterPage> createState() => _ARFilterPageState();
 }
 
 class _ARFilterPageState extends State<ARFilterPage> {
   final String licenseKey = "d34371fc78c9d880ae286027c82450eb831d056033d75457f100d3dc8974d9d3f3ba6c77d912e58a";
 
-  DeepArController controller = DeepArController();
+  final DeepARController _deeparController = DeepARController();
   bool isInitialized = false;
   int currentFilter = 0;
 
@@ -34,14 +32,11 @@ class _ARFilterPageState extends State<ARFilterPage> {
 
   Future<void> initDeepAR() async {
     try {
-      // FIX: deepar_flutter ka sahi initialize method
-      await controller.initialize(
-        androidLicenseKey: licenseKey,
-        iosLicenseKey: licenseKey,
-        resolution: Resolution.high,
-      );
-      if(mounted) setState(() => isInitialized = true);
-      await controller.switchEffect(effects[0]);
+      await _deeparController.initialize(licenseKey: licenseKey);
+      await _deeparController.startCapture();
+      setState(() => isInitialized = true);
+      // pehla filter load karo
+      await _deeparController.loadEffect("assets/effects/${effects[0]}.deepar");
     } catch (e) {
       debugPrint("DeepAR Error: $e");
       if(mounted){
@@ -52,7 +47,7 @@ class _ARFilterPageState extends State<ARFilterPage> {
 
   @override
   void dispose() {
-    controller.destroy();
+    _deeparController.dispose();
     super.dispose();
   }
 
@@ -63,7 +58,7 @@ class _ARFilterPageState extends State<ARFilterPage> {
       body: Stack(
         children: [
           isInitialized 
-              ? DeepArPreview(controller) 
+              ? const Center(child: Text("AR Camera Started - Effect Loading...", style: TextStyle(color: Colors.white)))
               : const Center(child: CircularProgressIndicator(color: Colors.white)),
 
           SafeArea(
@@ -78,7 +73,9 @@ class _ARFilterPageState extends State<ARFilterPage> {
                   ),
                   const Text("Yuopni Filters", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   IconButton(
-                    onPressed: ()=> controller.flipCamera(),
+                    onPressed: () async {
+                      await _deeparController.switchCamera();
+                    },
                     icon: const Icon(Icons.cameraswitch, color: Colors.white, size: 30)
                   ),
                 ],
@@ -101,7 +98,7 @@ class _ARFilterPageState extends State<ARFilterPage> {
                       onTap: () async {
                         setState(()=> currentFilter = i);
                         try{
-                          await controller.switchEffect(effects[i]);
+                          await _deeparController.loadEffect("assets/effects/${effects[i]}.deepar");
                         }catch(e){
                           debugPrint("Switch error $e");
                         }
@@ -128,26 +125,14 @@ class _ARFilterPageState extends State<ARFilterPage> {
                 ),
               ),
               const SizedBox(height: 15),
-              GestureDetector(
-                onTap: () async {
-                  try{
-                    File? file = await controller.takeScreenshot();
-                    if(file != null && mounted){
-                      Navigator.pop(context, file);
-                    }
-                  }catch(e){
-                    debugPrint("Screenshot error $e");
-                  }
-                },
-                child: Container(
-                  width: 75, height: 75,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white24, width: 4)
-                  ),
-                  child: const Icon(Icons.camera_alt, size: 35, color: Colors.black)
+              Container(
+                width: 75, height: 75,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white24, width: 4)
                 ),
+                child: const Icon(Icons.camera_alt, size: 35, color: Colors.black)
               ),
             ]),
           ),
