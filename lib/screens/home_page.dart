@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cached_video_player/cached_video_player.dart';
+import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import '../global.dart';
 import 'reel_page.dart';
@@ -108,14 +108,13 @@ class AutoPlayVideoCard extends StatefulWidget {
 }
 
 class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
-  CachedVideoPlayerController? _controller;
+  VideoPlayerController? _controller;
   bool _initialized = false;
   bool _isError = false;
 
   @override
   void initState() {
     super.initState();
-    // FIX: Login ke baad pause ko false kar do
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if(pauseReelsNotifier.value){
         pauseReelsNotifier.value = false;
@@ -127,14 +126,12 @@ class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
 
   Future<void> _initVideo() async {
     try{
-      // FIX: Cached controller - 259KB/s ki jagah 25KB/s
-      _controller = CachedVideoPlayerController.network(
-        widget.videoUrl,
-        cacheKey: widget.docId,
+      _controller = VideoPlayerController.networkUrl(
+        Uri.parse(widget.videoUrl),
       );
       await _controller!.initialize();
       _controller!.setLooping(true);
-      _controller!.setVolume(0); // Home pe mute rakho - data + UX sahi
+      _controller!.setVolume(0);
       if(mounted){
         setState(()=> _initialized = true);
       }
@@ -168,7 +165,6 @@ class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
           _controller!.pause();
           return;
         }
-        // 60% dikhe tabhi play - pehle 70% tha isliye kabhi play hi nahi hota tha
         if (info.visibleFraction > 0.6) {
           _controller!.play();
         } else {
@@ -177,7 +173,6 @@ class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
       },
       child: InkWell(
         onTap: () {
-          // Tap pe pause karo aur reel pe jao
           _controller?.pause();
           pauseReelsNotifier.value = true;
           Navigator.push(context, MaterialPageRoute(builder: (_) => ReelPage(myReels: widget.docs, initialIndex: widget.index))).then((_){
@@ -185,9 +180,9 @@ class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
           });
         },
         child: _isError
-          ? Container(height: 420, color: Colors.black, child: Icon(Icons.broken_image, color: Colors.white24))
+          ? Container(height: 420, color: Colors.black, child: const Icon(Icons.broken_image, color: Colors.white24))
           : _initialized
-           ? AspectRatio(aspectRatio: _controller!.value.aspectRatio, child: CachedVideoPlayer(_controller!))
+           ? AspectRatio(aspectRatio: _controller!.value.aspectRatio, child: VideoPlayer(_controller!))
            : Stack(alignment: Alignment.center, children: [
                 CachedNetworkImage(imageUrl: widget.thumbUrl, width: double.infinity, height: 420, fit: BoxFit.cover, errorWidget: (_,__,___)=> Container(height: 420, color: Colors.grey[900])),
                 const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
