@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cached_video_player/cached_video_player.dart';
+import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:share_plus/share_plus.dart';
 import 'main_screen.dart';
@@ -17,7 +17,7 @@ class ReelPage extends StatefulWidget {
 class _ReelPageState extends State<ReelPage> {
   late PageController _pageController;
   int _currentIndex = 0;
-  
+
   @override void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
@@ -60,7 +60,6 @@ class _ReelPageState extends State<ReelPage> {
         )
       );
     }
-    // FIX: Limit lagaya - 20 video hi ek baar me ayenge, data bachega
     return Scaffold(
       backgroundColor: Colors.black,
       body: StreamBuilder<QuerySnapshot>(
@@ -95,7 +94,7 @@ class ReelItem extends StatefulWidget {
 }
 
 class _ReelItemState extends State<ReelItem> {
-  CachedVideoPlayerController? _videoController;
+  VideoPlayerController? _videoController;
   final AudioPlayer _songPlayer = AudioPlayer();
   bool _isInit = false; 
   bool _isError = false; 
@@ -108,8 +107,6 @@ class _ReelItemState extends State<ReelItem> {
     _likeCount = (widget.data['likes'] as List?)?.length?? 0;
     var uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid!= null) _liked = (widget.data['likes'] as List?)?.contains(uid)?? false;
-
-    // FIX: Sirf active reel hi load hogi, baaki nahi - data bachega
     if(widget.isActive){
       _initVideo();
     }
@@ -119,13 +116,8 @@ class _ReelItemState extends State<ReelItem> {
   Future<void> _initVideo() async {
     String url = (widget.data['mediaUrl']?? widget.data['videoUrl']?? '').toString().trim();
     if (url.isEmpty || !url.startsWith('http') || _isInit) return;
-
     try{
-      // FIX: CACHED PLAYER - ab 259 KB/s ki jagah 25 KB/s lega
-      _videoController = CachedVideoPlayerController.network(
-        url,
-        cacheKey: widget.docId, // ek baar download, lifetime cache
-      );
+      _videoController = VideoPlayerController.networkUrl(Uri.parse(url));
       await _videoController!.initialize();
       _videoController!.setLooping(true);
       if (!mounted) return;
@@ -142,7 +134,6 @@ class _ReelItemState extends State<ReelItem> {
     if (_videoController == null || !mounted) return;
     if (pauseReelsNotifier.value || !widget.isActive || _pausedByPopup) return;
     if (!_videoController!.value.isPlaying) _videoController!.play();
-
     if (songUrl.isNotEmpty) {
       _videoController!.setVolume(0);
       try {
@@ -190,10 +181,10 @@ class _ReelItemState extends State<ReelItem> {
 
   bool _requireLogin() {
     if (FirebaseAuth.instance.currentUser == null) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => LoginPage())); return false;
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginPage())); return false;
     } return true;
   }
-  
+
   void _toggleLike() async {
     if (!_requireLogin()) return;
     var uid = FirebaseAuth.instance.currentUser!.uid;
@@ -210,7 +201,6 @@ class _ReelItemState extends State<ReelItem> {
     }
   }
 
-  // ... (tera share/comment wala same code niche)
   Future<void> _sendReelToChat(String chatId, String otherName) async {
     if (!_requireLogin()) return;
     String? myUid = FirebaseAuth.instance.currentUser?.uid;
@@ -251,7 +241,7 @@ class _ReelItemState extends State<ReelItem> {
       : _isInit && _videoController!= null
       ? GestureDetector(
           onTap: (){ if(_videoController!.value.isPlaying) { _videoController!.pause(); _songPlayer.pause(); } else { if(!pauseReelsNotifier.value && !_pausedByPopup) { _videoController!.play(); _songPlayer.play(); } } },
-          child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: CachedVideoPlayer(_videoController!)))
+          child: Center(child: AspectRatio(aspectRatio: _videoController!.value.aspectRatio, child: VideoPlayer(_videoController!)))
         ) 
       : const Center(child: CircularProgressIndicator(color: Colors.white)),
 
