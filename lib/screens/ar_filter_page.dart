@@ -4,11 +4,11 @@ import 'package:deepar_flutter/deepar_flutter.dart';
 
 class ARFilterPage extends StatefulWidget {
   const ARFilterPage({super.key});
-  @override State<ARFilterPage> createState() => _ARFilterPageState();
+  @override
+  State<ARFilterPage> createState() => _ARFilterPageState();
 }
 
 class _ARFilterPageState extends State<ARFilterPage> {
-  // Teri DeepAR Key
   final String licenseKey = "d34371fc78c9d880ae286027c82450eb831d056033d75457f100d3dc8974d9d3f3ba6c77d912e58a";
 
   DeepArController controller = DeepArController();
@@ -34,13 +34,13 @@ class _ARFilterPageState extends State<ARFilterPage> {
 
   Future<void> initDeepAR() async {
     try {
+      // FIX: deepar_flutter ka sahi initialize method
       await controller.initialize(
         androidLicenseKey: licenseKey,
         iosLicenseKey: licenseKey,
         resolution: Resolution.high,
       );
-      setState(() => isInitialized = true);
-      // pehla filter
+      if(mounted) setState(() => isInitialized = true);
       await controller.switchEffect(effects[0]);
     } catch (e) {
       debugPrint("DeepAR Error: $e");
@@ -66,7 +66,6 @@ class _ARFilterPageState extends State<ARFilterPage> {
               ? DeepArPreview(controller) 
               : const Center(child: CircularProgressIndicator(color: Colors.white)),
 
-          // Top bar
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(15),
@@ -87,7 +86,6 @@ class _ARFilterPageState extends State<ARFilterPage> {
             ),
           ),
 
-          // Bottom controls
           Positioned(
             bottom: 20, left: 0, right: 0,
             child: Column(children: [
@@ -95,7 +93,7 @@ class _ARFilterPageState extends State<ARFilterPage> {
                 height: 80,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                   itemCount: effects.length,
                   itemBuilder: (_, i){
                     bool isSelected = currentFilter == i;
