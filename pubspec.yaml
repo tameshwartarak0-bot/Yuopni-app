@@ -50,4 +50,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/efforts/.keep
+    - assets/Fonts/.keep
+    - assets/effects/.keep
