@@ -38,12 +38,6 @@ dependencies:
   flutter_cache_manager: ^3.3.2
   ffmpeg_kit_flutter_new: ^1.0.0
 
-dependency_overrides:
-  meta: ^1.17.0
-  ffmpeg_kit_flutter: ^6.0.2
-  ffmpeg_kit_flutter_android: 6.0.2
-  ffmpeg_kit_flutter_ios: 6.0.2
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -51,6 +45,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  # assets hataya hai kyuki folder exist nahi karta
-  # assets:
-  #   - assets/effects/
