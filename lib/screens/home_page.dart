@@ -29,7 +29,7 @@ class HomePage extends StatelessWidget {
                       Row(children: [
                         const Icon(Icons.cloud_upload, color: Colors.green, size: 16),
                         const SizedBox(width: 8),
-                        Expanded(child: Text("${p.toStringAsFixed(0)}% Upload...", style: const TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold))),
+                        Expanded(child: Text("${p.toStringAsFixed(0)}% Upload ho raha hai...", style: const TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold))),
                         Text("${p.toStringAsFixed(0)}%", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       ]),
                       const SizedBox(height: 4),
@@ -48,8 +48,7 @@ class HomePage extends StatelessWidget {
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("Abhi koi Post nahi", style: TextStyle(color: Colors.white)));
                 var docs = snapshot.data!.docs;
                 return ListView.builder(
-                  addAutomaticKeepAlives: false, // Important - RAM bachayega
-                  addRepaintBoundaries: true,
+                  addAutomaticKeepAlives: false,
                   itemCount: docs.length,
                   itemBuilder: (_, i) {
                     var data = docs[i].data() as Map<String, dynamic>;
@@ -57,10 +56,10 @@ class HomePage extends StatelessWidget {
                     String thumbUrl = (data['thumbnail']?? mediaUrl).toString();
                     bool isVideo = data['isVideo'] == true || mediaUrl.toLowerCase().contains(".mp4");
                     String title = (data['title']?? data['caption']?? '').toString();
-                    // User ka extra Stream hata diya - direct post data se lo, N+1 query khatam
-                    String displayName = (data['username']?? 'User').toString();
+                    // User ka alag Stream hata diya - yahi chipkata tha
+                    String displayName = (data['username'] ?? 'User').toString();
                     if(displayName.contains('@')) displayName = 'User';
-                    String photoUrl = (data['userPhoto']?? '').toString();
+                    String photoUrl = (data['userPhoto'] ?? '').toString();
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -74,7 +73,7 @@ class HomePage extends StatelessWidget {
                         if (isVideo)
                           AutoPlayVideoCard(videoUrl: mediaUrl, thumbUrl: thumbUrl, docs: docs, index: i, docId: docs[i].id)
                         else
-                          CachedNetworkImage(imageUrl: mediaUrl, width: double.infinity, height: 420, fit: BoxFit.cover, memCacheHeight: 800), // cache height se chipakna band
+                          CachedNetworkImage(imageUrl: mediaUrl, width: double.infinity, height: 420, fit: BoxFit.cover, memCacheHeight: 800),
                       ]),
                     );
                   },
@@ -139,13 +138,11 @@ class _AutoPlayVideoCardState extends State<AutoPlayVideoCard> {
     return VisibilityDetector(
       key: Key(widget.docId),
       onVisibilityChanged: (info) {
-        // Instagram logic: dikha to init karo, nahi dikha to pause
         if (info.visibleFraction > 0.7) {
           if(!_initialized && !_isError) _initVideo().then((_) => _controller?.play());
           else _controller?.play();
         } else {
           _controller?.pause();
-          // Screen se bahar gaya to dispose bhi kar do RAM ke liye
           if(info.visibleFraction == 0 && _initialized) {
              _controller?.dispose();
              _controller = null;
