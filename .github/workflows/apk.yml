@@ -17,16 +17,15 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.24.5'
           cache: true
 
       - name: Decode Keystore
         run: |
           if [ -f android/app/keystore.b64 ]; then
             base64 --decode android/app/keystore.b64 > android/app/upload-keystore.jks
-            echo "Keystore decoded"
+            ls -lh android/app/upload-keystore.jks
           else
-            echo "keystore.b64 not found, using debug keystore"
+            echo "keystore.b64 not found, build will use debug keystore"
           fi
 
       - name: Create key.properties
@@ -36,15 +35,12 @@ jobs:
           echo "keyPassword=yuopni123" >> android/app/key.properties
           echo "keyAlias=yuopni" >> android/app/key.properties
           cp android/app/key.properties android/key.properties
-          cat android/app/key.properties
 
-      - name: Full Clean
+      - name: Clean & Get Packages
         run: |
           flutter clean
           flutter --version
-
-      - name: Pub Get
-        run: flutter pub get
+          flutter pub get
 
       - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation
