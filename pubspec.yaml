@@ -30,7 +30,6 @@ dependencies:
   wakelock_plus: ^1.5.0
   app_links: ^6.3.2
   audioplayers: ^6.1.0
-  video_trimmer: ^3.0.0
   just_audio: ^0.9.36
   visibility_detector: ^0.4.0+2
   video_thumbnail: ^0.5.3
@@ -41,6 +40,9 @@ dependencies:
 
 dependency_overrides:
   meta: ^1.17.0
+  ffmpeg_kit_flutter: ^6.0.2
+  ffmpeg_kit_flutter_android: 6.0.2
+  ffmpeg_kit_flutter_ios: 6.0.2
 
 dev_dependencies:
   flutter_test:
@@ -49,5 +51,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/effects/
+  # assets hataya hai kyuki folder exist nahi karta
+  # assets:
+  #   - assets/effects/
