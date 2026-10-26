@@ -8,7 +8,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:video_compress/video_compress.dart';
 import '../global.dart';
 import '../data/songs_data.dart';
@@ -72,19 +71,37 @@ class _UploadPageState extends State<UploadPage> {
     await _notif.show(0, 'Yuopni - ${p.toStringAsFixed(0)}% $msg', msg, NotificationDetails(android: AndroidNotificationDetails('yuopni_upload','Yuopni Uploads', importance: Importance.low, ongoing: p < 100, autoCancel: p >= 100, showProgress: true, maxProgress: 100, progress: p.toInt(), onlyAlertOnce: true)));
   }
 
+  // DATA BACHANE WALA COMPRESS - FINAL
   Future<File> _compressVideo(File file) async {
     setState(()=> _isCompressing = true);
     await _updateNotif(5, "Compressing video...");
     try {
+      // 30MB se bada hai to LowQuality
+      var quality = file.lengthSync() > 30 * 1024 * 1024 ? VideoQuality.LowQuality : VideoQuality.MediumQuality;
       final info = await VideoCompress.compressVideo(
         file.path,
-        quality: VideoQuality.MediumQuality,
+        quality: quality,
         deleteOrigin: false,
         includeAudio: true,
       );
       if(info!=null && info.path!=null){
         File compressed = File(info.path!);
-        debugPrint("Original: ${file.lengthSync()/1024/1024}MB -> Compressed: ${compressed.lengthSync()/1024/1024}MB");
+        double orig = file.lengthSync()/1024/1024;
+        double comp = compressed.lengthSync()/1024/1024;
+        debugPrint("Original: ${orig.toStringAsFixed(1)}MB -> Compressed: ${comp.toStringAsFixed(1)}MB");
+        // Abhi bhi 15MB se zyada hai to ek baar aur Low pe
+        if(comp > 15 && quality == VideoQuality.MediumQuality){
+          VideoCompress.deleteAllCache();
+          final info2 = await VideoCompress.compressVideo(
+            compressed.path,
+            quality: VideoQuality.LowQuality,
+            deleteOrigin: false,
+          );
+          if(info2!=null && info2.path!=null){
+            compressed = File(info2.path!);
+            debugPrint("Second compress: ${compressed.lengthSync()/1024/1024}MB");
+          }
+        }
         setState(()=> _isCompressing = false);
         return compressed;
       }
@@ -113,9 +130,18 @@ class _UploadPageState extends State<UploadPage> {
     }
   }
 
-  Future<void> _pickImage() async { final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 70); if(x!=null){ _previewCtrl?.dispose(); _previewCtrl=null; setState((){ _file=File(x.path); _isVideo=false; _isLongVideo=false; _showTrimmer=false; }); } }
-  Future<void> _pickVideo() async { final x = await ImagePicker().pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 15)); if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=false; }); await _loadVideo(f); } }
-  Future<void> _pickLongVideo() async { final x = await ImagePicker().pickVideo(source: ImageSource.gallery); if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=true; _showTrimmer=false; }); await _loadVideo(f); } }
+  Future<void> _pickImage() async { 
+    final x = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 50); 
+    if(x!=null){ _previewCtrl?.dispose(); _previewCtrl=null; setState((){ _file=File(x.path); _isVideo=false; _isLongVideo=false; _showTrimmer=false; }); } 
+  }
+  Future<void> _pickVideo() async { 
+    final x = await ImagePicker().pickVideo(source: ImageSource.gallery, maxDuration: const Duration(minutes: 15)); 
+    if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=false; }); await _loadVideo(f); } 
+  }
+  Future<void> _pickLongVideo() async { 
+    final x = await ImagePicker().pickVideo(source: ImageSource.gallery); 
+    if(x!=null){ File f=File(x.path); setState((){ _file=f; _isVideo=true; _isLongVideo=true; _showTrimmer=false; }); await _loadVideo(f); } 
+  }
 
   Future<void> _selectSong() async {
     String search = "";
@@ -138,7 +164,7 @@ class _UploadPageState extends State<UploadPage> {
     dio.FormData formData = dio.FormData.fromMap({
       'upload_preset': uploadPreset, 
       'file': await dio.MultipartFile.fromFile(file.path),
-      'eager': 'q_auto:good,f_auto,w_720',
+      'eager': 'q_auto:low,f_auto,w_480',
       'eager_async': 'true',
     });
     var res = await dioClient.post("https://api.cloudinary.com/v1_1/$cloudName/${isVideo? "video" : "image"}/upload", data: formData, onSendProgress: (s,t){ if(t!=0){ double p=s/t*100; onProgress(p); _updateNotif(p, "Uploading..."); } });
@@ -164,12 +190,9 @@ class _UploadPageState extends State<UploadPage> {
     await _updateNotif(0, "Starting...");
     try{
       File fileToUpload = _file!;
-      // Trim ab skip kar rahe hai - ffmpeg ki wajah se build fail ho raha tha
-      // Future me bina ffmpeg ke trim lagayenge
       if(_isVideo){
         fileToUpload = await _compressVideo(fileToUpload);
       }
-
       String url;
       if(_isLongVideo){ url=await _uploadLongToSupabase(fileToUpload, (p){ if(mounted) setState(()=>_progress=p); }); }
       else { url=await _uploadToCloudinary(fileToUpload, _isVideo, (p){ if(mounted) setState(()=>_progress=p); }); }
@@ -187,7 +210,7 @@ class _UploadPageState extends State<UploadPage> {
         'createdAt': FieldValue.serverTimestamp(), 'timestamp': FieldValue.serverTimestamp(),
         'likes': [], 'views': 0, 'views_count': 0, 'viewsCount': 0, 'likes_count': 0, 'comments_count': 0,
         'docId': docId, 'shareLink': "https://yuopni.com/video?id=$docId", 'type': _isVideo ? 'reel' : 'post',
-        'compressed': true, 'quality': '720p',
+        'compressed': true, 'quality': '480p',
       });
 
       await _notif.cancel(0);
@@ -226,9 +249,9 @@ class _UploadPageState extends State<UploadPage> {
             activeColor: Colors.pink,
             onChanged: (v){ setState((){ _startValue=v.start; _endValue=v.end; }); },
           ),
-          const Text("Note: Trim abhi disabled hai (build fix ke liye), full video upload hoga", style: TextStyle(color: Colors.white38, fontSize: 10)),
+          const Text("Trim note: Full video upload hoga", style: TextStyle(color: Colors.white38, fontSize: 10)),
         ]),
-        if(_isCompressing) const Column(children:[LinearProgressIndicator(color: Colors.cyan), SizedBox(height:8), Text("Compressing...", style: TextStyle(color: Colors.cyan))]),
+        if(_isCompressing) const Column(children:[LinearProgressIndicator(color: Colors.cyan), SizedBox(height:8), Text("Compressing - data bacha raha hu...", style: TextStyle(color: Colors.cyan))]),
         Row(children:[
           Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickImage, child: const Text("Photo"))),
           const SizedBox(width:6),
