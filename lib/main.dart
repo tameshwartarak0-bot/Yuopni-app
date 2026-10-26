@@ -16,11 +16,14 @@ void main() async {
     url: 'https://aynsnbgulloedotmjlcq.supabase.co',
     anonKey: 'sb_publishable_nFfjqpnLm5FUZD7GbVXlYw_X3vkM_sj',
   );
-  runApp(const YuopniApp());
+  // Prefs ko pehle se load karke rakho - Instagram yahi karta hai
+  final prefs = await SharedPreferences.getInstance();
+  runApp(YuopniApp(prefs: prefs));
 }
 
 class YuopniApp extends StatefulWidget {
-  const YuopniApp({super.key});
+  final SharedPreferences prefs;
+  const YuopniApp({super.key, required this.prefs});
   @override
   State<YuopniApp> createState() => _YuopniAppState();
 }
@@ -49,11 +52,8 @@ class _YuopniAppState extends State<YuopniApp> {
     if (!isOurLink) return;
     String? videoId = uri.queryParameters['id']?.trim();
     if (videoId == null || videoId.isEmpty) return;
-
-    // Navigator ready hone ka wait - loop ki jagah simple delay
-    await Future.delayed(const Duration(milliseconds: 500));
+    await Future.delayed(const Duration(milliseconds: 800));
     if (_navigatorKey.currentState == null) return;
-
     try {
       var doc = await FirebaseFirestore.instance.collection('posts').doc(videoId).get();
       if (!doc.exists || doc.data() == null) return;
@@ -65,13 +65,10 @@ class _YuopniAppState extends State<YuopniApp> {
     }
   }
 
-  Future<bool> _getSeenDemo() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('seenDemo')?? false;
-  }
-
   @override
   Widget build(BuildContext context) {
+    bool seenDemo = widget.prefs.getBool('seenDemo') ?? false;
+
     return MaterialApp(
       navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
@@ -79,6 +76,7 @@ class _YuopniAppState extends State<YuopniApp> {
       home: StreamBuilder<fb_auth.User?>(
         stream: fb_auth.FirebaseAuth.instance.authStateChanges(),
         builder: (context, authSnap) {
+          // Sirf ek hi loading, double loading khatam
           if (authSnap.connectionState == ConnectionState.waiting) {
             return const Scaffold(
               backgroundColor: Colors.black,
@@ -86,28 +84,16 @@ class _YuopniAppState extends State<YuopniApp> {
             );
           }
 
-          // 1. Login hai toh seedha MainScreen - chahe recent clear bhi ho
-          if (authSnap.hasData && authSnap.data!= null) {
+          // 1. Login hai toh seedha MainScreen - Recent clear se bhi farak nahi
+          if (authSnap.hasData && authSnap.data != null) {
             return MainScreen();
           }
 
-          // 2. Login nahi hai toh seenDemo check karo
-          return FutureBuilder<bool>(
-            future: _getSeenDemo(),
-            builder: (context, demoSnap) {
-              if (demoSnap.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  backgroundColor: Colors.black,
-                  body: Center(child: CircularProgressIndicator(color: Colors.white)),
-                );
-              }
-              bool seenDemo = demoSnap.data?? false;
-              if (seenDemo) {
-                return MainScreen(); // Guest mode
-              }
-              return const DemoPage();
-            },
-          );
+          // 2. Login nahi hai toh prefs se direct decision - bina FutureBuilder ke
+          if (seenDemo) {
+            return MainScreen(); // Guest mode
+          }
+          return const DemoPage();
         },
       ),
     );
