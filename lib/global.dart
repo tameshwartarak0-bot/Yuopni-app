@@ -6,6 +6,10 @@ import 'widgets/login_dialog.dart';
 ValueNotifier<double> globalUploadProgress = ValueNotifier(0);
 ValueNotifier<bool> isUploadingGlobal = ValueNotifier(false);
 
+// Reel ko rokne ke liye - HomePage ka video pause karne ke liye
+// Ye line nahi thi isliye build fail ho raha tha
+ValueNotifier<bool> pauseReelsNotifier = ValueNotifier(false);
+
 bool get isLoggedIn => FirebaseAuth.instance.currentUser != null;
 
 Future<void> doIfLoggedIn(BuildContext context, Function action) async {
