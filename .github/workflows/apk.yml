@@ -7,14 +7,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
+      
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          cache: true
+          cache: false
 
       - name: Decode Keystore
         run: |
@@ -27,6 +29,14 @@ jobs:
           echo "keyPassword=yuopni123" >> android/app/key.properties
           echo "keyAlias=yuopni" >> android/app/key.properties
           cp android/app/key.properties android/key.properties
+
+      - name: Full Clean
+        run: |
+          flutter clean
+          rm -rf ~/.pub-cache
+          rm -rf build/
+          rm -rf android/.gradle
+          rm -rf android/app/build
 
       - run: flutter --version
       - run: flutter pub get
