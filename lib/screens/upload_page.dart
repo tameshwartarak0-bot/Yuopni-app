@@ -10,8 +10,6 @@ import 'package:just_audio/just_audio.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_compress/video_compress.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import '../global.dart';
 import '../data/songs_data.dart';
 import 'ar_filter_page.dart';
@@ -95,24 +93,6 @@ class _UploadPageState extends State<UploadPage> {
     return file;
   }
 
-  // NEW TRIM FUNCTION - ffmpeg_kit_new se
-  Future<File> _trimWithFFmpeg(File input, double start, double end) async {
-    final dir = await getTemporaryDirectory();
-    final outputPath = "${dir.path}/trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4";
-    final duration = end - start;
-    // -ss start -t duration
-    final command = "-y -i ${input.path} -ss $start -t $duration -c:v mpeg4 -c:a aac $outputPath";
-    debugPrint("FFmpeg command: $command");
-    final session = await FFmpegKit.execute(command);
-    final returnCode = await session.getReturnCode();
-    if (ReturnCode.isSuccess(returnCode)) {
-      return File(outputPath);
-    } else {
-      debugPrint("FFmpeg trim failed");
-      return input;
-    }
-  }
-
   String _fmt(int sec){ final m = sec ~/ 60; final s = sec % 60; return "$m:${s.toString().padLeft(2,'0')}"; }
 
   Future<void> _loadVideo(File file) async {
@@ -123,7 +103,7 @@ class _UploadPageState extends State<UploadPage> {
       if(!_isLongVideo){
         setState((){ 
           _showTrimmer = true; 
-          _endValue = _previewCtrl!.value.duration.inSeconds > 30? 30 : _previewCtrl!.value.duration.inSeconds.toDouble(); 
+          _endValue = _previewCtrl!.value.duration.inSeconds > 30 ? 30 : _previewCtrl!.value.duration.inSeconds.toDouble();
           _startValue = 0;
         });
       }
@@ -184,10 +164,8 @@ class _UploadPageState extends State<UploadPage> {
     await _updateNotif(0, "Starting...");
     try{
       File fileToUpload = _file!;
-      if(_showTrimmer && _isVideo &&!_isLongVideo && _endValue > _startValue){
-        await _updateNotif(10, "Trimming...");
-        fileToUpload = await _trimWithFFmpeg(fileToUpload, _startValue, _endValue);
-      }
+      // Trim ab skip kar rahe hai - ffmpeg ki wajah se build fail ho raha tha
+      // Future me bina ffmpeg ke trim lagayenge
       if(_isVideo){
         fileToUpload = await _compressVideo(fileToUpload);
       }
@@ -215,7 +193,7 @@ class _UploadPageState extends State<UploadPage> {
       await _notif.cancel(0);
       try{ isUploadingGlobal.value=false; globalUploadProgress.value=0; }catch(e){}
       _audioPlayer.stop();
-      if(mounted){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload ho gaya! ✅ 70% data bacha"))); Navigator.pop(context); }
+      if(mounted){ ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Upload ho gaya! ✅"))); Navigator.pop(context); }
     }catch(e){ await _notif.cancel(0); try{ isUploadingGlobal.value=false; }catch(_){} if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e"))); }
     finally{ if(mounted) setState(()=>_isUploading=false); }
   }
@@ -238,19 +216,19 @@ class _UploadPageState extends State<UploadPage> {
         const SizedBox(height:12),
         if(_showTrimmer && _previewCtrl!=null) Column(children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text("Start: ${_fmt(_startValue.toInt())}", style: const TextStyle(color: Colors.white70)),
-            Text("End: ${_fmt(_endValue.toInt())} (${_fmt((_endValue-_startValue).toInt())})", style: const TextStyle(color: Colors.white70)),
+            Text("Start: ${_fmt(_startValue.toInt())}", style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            Text("End: ${_fmt(_endValue.toInt())}", style: const TextStyle(color: Colors.white70, fontSize: 12)),
           ]),
           RangeSlider(
             min: 0,
             max: _previewCtrl!.value.duration.inSeconds.toDouble(),
-            divisions: _previewCtrl!.value.duration.inSeconds,
             values: RangeValues(_startValue, _endValue),
             activeColor: Colors.pink,
             onChanged: (v){ setState((){ _startValue=v.start; _endValue=v.end; }); },
           ),
+          const Text("Note: Trim abhi disabled hai (build fix ke liye), full video upload hoga", style: TextStyle(color: Colors.white38, fontSize: 10)),
         ]),
-        if(_isCompressing) const Column(children:[LinearProgressIndicator(color: Colors.cyan), SizedBox(height:8), Text("Video ko compress kar rahe hai... 70% data bachega", style: TextStyle(color: Colors.cyan))]),
+        if(_isCompressing) const Column(children:[LinearProgressIndicator(color: Colors.cyan), SizedBox(height:8), Text("Compressing...", style: TextStyle(color: Colors.cyan))]),
         Row(children:[
           Expanded(child: OutlinedButton(onPressed: _isUploading?null:_pickImage, child: const Text("Photo"))),
           const SizedBox(width:6),
